@@ -1,0 +1,79 @@
+.container {
+    padding: 2px 15px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+    width: 100%; /* Ensure it takes full width */
+    background-color: ; /* Background color not specified */
+    white-space: pre-wrap; /* Preserve whitespace and formatting */
+}
+
+.messages-container {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    margin-bottom: 10px;
+    height: 80%;
+    /* min-height: 0; Ensure it doesn't unnecessarily expand */
+    width: 100%;
+    white-space: pre-wrap; /* Preserve whitespace and formatting */
+}
+
+.message {
+    margin: 5px 0;
+    padding: 10px; /* Increased padding to prevent text cut-off */
+    border-radius: 5px;
+    max-width: calc(100% - 10px); /* Prevent overflow */
+    word-wrap: break-word; /* Ensure long words do not cause overflow */
+    white-space: pre-wrap; /* Preserve whitespace and formatting */
+}
+
+.message.user, .message.system {
+    align-self: flex-start; /* Adjust if needed */
+    background-color: #f0f0f0; /* No change for user */
+    /* System message color adjusted below if needed */
+    white-space: pre-wrap; /* Preserve whitespace and formatting */
+}
+
+.message.system {
+    background-color: #d1e7dd;
+    white-space: pre-wrap; /* Preserve whitespace and formatting */
+}
+
+.messages-container {
+    height: 240px;
+    white-space: pre-wrap; /* Preserve whitespace and formatting */
+}
+
+.full_width_text_container {
+    width: 100%;
+    resize: vertical;
+    overflow-y: auto;
+    min-height: 80px;
+    margin: 0 0 20px 0;
+    box-sizing: border-box;
+    white-space: pre-wrap; /* Preserve whitespace and formatting */
+}
+
+.button-container {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.flex-col {
+    display: flex;
+    flex-direction: column;
+}
+.w-full {
+    width: 100%
+}
+.mb-2 {
+    margin-bottom: 0.5rem; /* 8px assuming the root font-size is 16px */
+}
+.mb-4 {
+    margin-bottom: 16px; /* 1rem typically equals 16px */
+}
