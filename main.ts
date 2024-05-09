@@ -1,3 +1,6 @@
+import pdfjs from "@bundled-es-modules/pdfjs-dist/build/pdf";
+import viewer from "@bundled-es-modules/pdfjs-dist/web/pdf_viewer";
+import OpenAI from "openai";
 import Groq from "groq-sdk";
 import { around } from "monkey-around";
 import { Canvas, ViewportNode } from "./types";
@@ -39,11 +42,12 @@ const basePath = "/Users/jacobcolling/Documents/accelerate/accelerate/";
 
 dotenv.config({
     path: `${basePath}/.obsidian/plugins/caret/.env`,
-    debug: true,
 });
 
 const groq_api_key = process.env.GROQ_API_KEY;
+const openai_key = process.env.OPENAI_KEY;
 const groq = new Groq({ apiKey: groq_api_key, dangerouslyAllowBrowser: true });
+const openai = new OpenAI({ apiKey: openai_key, dangerouslyAllowBrowser: true });
 
 // Start of node and edge functions
 interface edgeT {
@@ -544,10 +548,8 @@ export default class MyPlugin extends Plugin {
         });
         this.registerEvent(
             this.app.workspace.on("active-leaf-change", () => {
-                console.log("Leaf changed");
                 const currentLeaf = this.app.workspace.activeLeaf;
                 if (currentLeaf?.view.getViewType() === "canvas") {
-                    console.log("Leaf is canvas!");
                     this.patchCanvasMenu();
                 }
             })
@@ -567,10 +569,7 @@ export default class MyPlugin extends Plugin {
                 if (currentLeaf?.view.getViewType() === "canvas") {
                     const canvasView = currentLeaf.view;
                     const canvas = (canvasView as any).canvas;
-                    console.log(canvas);
-                    console.log(canvas.nodeIndex.data.children);
                     const viewportNodes = canvas.getViewportNodes();
-                    console.log(viewportNodes);
                 }
             },
         });
@@ -727,16 +726,39 @@ export default class MyPlugin extends Plugin {
         });
 
         async function one_shot(message: string) {
-            const data = { message };
-            const resp = await fetch("http://localhost:8000/single-turn", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(data),
-            });
-            const output = await resp.json();
-            return output.content;
+            let model = "openai-gpt-4";
+            if (model === "local") {
+                const data = { message };
+                const resp = await fetch("http://localhost:8000/single-turn", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(data),
+                });
+                const output = await resp.json();
+                return output.content;
+            }
+            console.log(message);
+            if (model === "openai-gpt-4") {
+                const user_message = {
+                    role: "user",
+                    content: message,
+                };
+                const model = "gpt-4-1106-preview";
+                const params = {
+                    messages: [user_message],
+                    model: model,
+                };
+                // @ts-ignore
+                new Notice("Calling GPT-4!");
+                const chat_completion: OpenAI.Chat.ChatCompletion = await openai.chat.completions.create(params);
+                new Notice("Message back from GPT-4!");
+                // const chat_completion: OpenAI.Chat.ChatCompletion = await groq.chat.completions.create(params);
+                const content = chat_completion.choices[0].message.content;
+                return content;
+                // node_content = `<role>assistant</role>\n${content}`;
+            }
         }
 
         function parseCustomXML(xmlString: string) {
@@ -862,8 +884,6 @@ export default class MyPlugin extends Plugin {
                     return result;
                 },
         });
-        console.log("Heree---");
-        console.log(canvasView.constructor.prototype);
         canvasView.scope?.register(["Mod", "Shift"], "ArrowUp", () => {
             that.create_directional_node(canvas, "top");
         });
@@ -1008,15 +1028,18 @@ export default class MyPlugin extends Plugin {
             console.error("Edit button not found");
         }
     }
-    run_graph_chat(canvas) {
+    run_graph_chat(canvas: Canvas) {
+        canvas.requestSave();
         const selection = canvas.selection;
         const selectionIterator = selection.values();
         const node = selectionIterator.next().value;
         const node_id = node.id;
-        node.isEditing = true;
-        const editButton = document.querySelector('.canvas-menu button[aria-label="Sparkle"]');
+
+        const editButton = document.querySelector('.canvas-menu button[aria-label="Sparkle"]') as HTMLButtonElement;
         if (editButton) {
-            editButton.click(); // Simulate the click on the edit button
+            setTimeout(() => {
+                editButton.click(); // Simulate the click on the edit button after 200 milliseconds
+            }, 200);
         } else {
             console.error("Edit button not found");
         }
@@ -1026,9 +1049,10 @@ export default class MyPlugin extends Plugin {
         const selection = canvas.selection;
         const selectionIterator = selection.values();
         const node = selectionIterator.next().value;
-        console.log("In canvas");
-        console.log(node);
         if (!node) {
+            return;
+        }
+        if (node.isEditing) {
             return;
         }
         const node_id = node.id;
@@ -1092,44 +1116,95 @@ export default class MyPlugin extends Plugin {
         // const viewportNodes = canvas.getViewportNodes();
         let viewport_nodes: ViewportNode[] = [];
         let initial_viewport_children = canvas.nodeIndex.data.children;
-        console.log("View port nodes");
         if (initial_viewport_children.length > 1) {
-            for (let i = 0; i < initial_viewport_children.length; i++) {
-                const nodes_list = initial_viewport_children[i].children;
-                console.log({ nodes_list });
-                nodes_list.forEach((node: ViewportNode) => {
-                    viewport_nodes.push(node);
-                });
+            let type_nodes = "nodes";
+
+            // If there is more childen then use this path.
+            if (initial_viewport_children[0] && "children" in initial_viewport_children[0]) {
+                type_nodes = "children";
+            }
+            if (type_nodes === "children") {
+                for (let i = 0; i < initial_viewport_children.length; i++) {
+                    const nodes_list = initial_viewport_children[i].children;
+
+                    nodes_list.forEach((node: ViewportNode) => {
+                        viewport_nodes.push(node);
+                    });
+                }
+            }
+            if (type_nodes === "nodes") {
+                for (let i = 0; i < initial_viewport_children.length; i++) {
+                    const viewport_node = initial_viewport_children[i];
+                    viewport_nodes.push(viewport_node);
+                }
             }
         }
 
-        console.log(viewport_nodes);
-        console.log(targetNodeID);
-
         if (targetNodeID) {
             const target_node = viewport_nodes.find((node) => node.id === targetNodeID);
-            console.log(target_node);
-            console.log("Makes it here");
 
-            // console.log({ target_node });
             canvas.selectOnly(target_node);
             canvas.zoomToSelection();
         }
     }
+    async extractTextFromPDF(file_name: string): Promise<string> {
+        // pdfjs.GlobalWorkerOptions.workerSrc = "pdf.worker.js";
+        // Assuming this code is inside a method of your plugin class
 
+        pdfjs.GlobalWorkerOptions.workerSrc = await this.app.vault.getResourcePath({
+            path: ".obsidian/plugins/caret/pdf.worker.js",
+        });
+        // const file_path = `/Users/jacobcolling/Documents/accelerate/accelerate/Attention is All Your Need.pdf`;
+        // const document = await getDocument(file_path);
+        // console.log(document);
+        const file_path = await this.app.vault.getResourcePath({
+            path: file_name,
+        });
+        async function loadAndExtractText(file_path: string): Promise<string> {
+            try {
+                const doc = await pdfjs.getDocument(file_path).promise;
+                const numPages = doc.numPages;
+
+                // Load metadata
+                const metadata = await doc.getMetadata();
+
+                let fullText = "";
+                for (let i = 1; i <= numPages; i++) {
+                    const page = await doc.getPage(i);
+                    const viewport = page.getViewport({ scale: 1.0 });
+
+                    const content = await page.getTextContent();
+                    const pageText = content.items.map((item: { str: string }) => item.str).join(" ");
+                    fullText += pageText + " ";
+
+                    // Release page resources.
+                    page.cleanup();
+                }
+                return fullText;
+            } catch (err) {
+                console.error("Error: " + err);
+                throw err;
+            }
+        }
+
+        const fullDocumentText = await loadAndExtractText(file_path);
+        return fullDocumentText;
+    }
     addGraphButtonIfNeeded(menuEl: HTMLElement) {
         if (!menuEl.querySelector(".graph-menu-item")) {
             const graphButtonEl = createEl("button", "clickable-icon graph-menu-item");
             setTooltip(graphButtonEl, "Create Node", { placement: "top" });
             setIcon(graphButtonEl, "lucide-workflow");
             graphButtonEl.addEventListener("click", () => {
-                console.log("Graph button clicked");
                 // Assuming canvasView is accessible here, or you need to pass it similarly
                 const canvasView = this.app.workspace.getLeavesOfType("canvas").first()?.view;
+
                 const canvas = canvasView.canvas;
+                console.log(canvas);
                 const selection = canvas.selection;
                 const selectionIterator = selection.values();
                 const node = selectionIterator.next().value;
+                console.log(node);
                 const x = node.x + node.width + 200;
                 this.childNode(canvas, node, x, node.y, "<role>user</role>");
             });
@@ -1200,6 +1275,10 @@ export default class MyPlugin extends Plugin {
             incomingEdges.forEach((edge) => {
                 const ancestor = nodes.find((node) => node.id === edge.fromNode);
                 if (ancestor) {
+                    // Check if the ancestor is the direct ancestor (index 1) and has 'context' in its content
+                    if (path.length === 1 && ancestor.type === "text" && ancestor.text.includes("<context>")) {
+                        return; // Skip this lineage
+                    }
                     findLongestPath(ancestor.id, path.concat(ancestor));
                 }
             });
@@ -1213,6 +1292,41 @@ export default class MyPlugin extends Plugin {
 
         return longestLineage;
     }
+    getDirectAncestorsWithContext(nodes: Node[], edges: Edge[], nodeId: string): Node[] {
+        let directAncestorsWithContext: Node[] = [];
+
+        const startNode = nodes.find((node) => node.id === nodeId);
+        if (!startNode) return [];
+
+        const incomingEdges: Edge[] = edges.filter((edge) => edge.toNode === nodeId);
+        incomingEdges.forEach((edge) => {
+            const ancestor = nodes.find((node) => node.id === edge.fromNode);
+            if (ancestor && ancestor.type === "text" && ancestor.text.includes("<context>")) {
+                directAncestorsWithContext.push(ancestor);
+            }
+        });
+
+        return directAncestorsWithContext;
+    }
+
+    async get_ref_blocks_content(node: any): Promise<string> {
+        let rep_block_content = "";
+        const ref_blocks = node.text.match(/\[\[.*?\]\]/g) || [];
+        const inner_texts = ref_blocks.map((block: string) => block.slice(2, -2));
+        const files = this.app.vault.getFiles();
+
+        for (const file_name of inner_texts) {
+            const foundFile = files.find((file) => file.basename === file_name);
+            if (foundFile) {
+                const text = await this.app.vault.cachedRead(foundFile);
+                rep_block_content += `Title: ${file_name}\n${text}\n\n`;
+            } else {
+                console.log("File not found for:", file_name);
+            }
+        }
+        rep_block_content = rep_block_content.trim();
+        return rep_block_content;
+    }
 
     addAIButtonIfNeeded(menuEl: HTMLElement) {
         if (!menuEl.querySelector(".gpt-menu-item")) {
@@ -1222,26 +1336,72 @@ export default class MyPlugin extends Plugin {
             buttonEl.addEventListener("click", async () => {
                 const canvasView = this.app.workspace.getLeavesOfType("canvas").first()?.view;
                 const canvas = canvasView.canvas;
+                await canvas.requestSave(true);
                 const selection = canvas.selection;
                 const selectionIterator = selection.values();
                 const node = selectionIterator.next().value;
+
+                // const file_name = "Attention is All Your Need";
+                // const files = await this.app.vault.getFiles();
+                // const foundFile = files.find((file) => file.basename === file_name);
+                // const pdf_text = await this.extractTextFromPDF(foundFile);
+                // await node.blur();
+                // await node.blur();
                 const canvas_data = canvas.getData();
                 const { edges, nodes } = canvas_data;
+                console.log(canvas_data);
 
                 // const ancestors = this.get_ancestors(nodes, edges, node.id);
                 // const all_ancestors = this.getAllAncestorNodes(nodes, edges, node.id);
                 const longest_lineage = this.getLongestLineage(nodes, edges, node.id);
+
+                const ancestors_with_context = this.getDirectAncestorsWithContext(nodes, edges, node.id);
+                const ref_blocks = await this.get_ref_blocks_content(node);
+                let added_context = ``;
+                for (let i = 0; i < ancestors_with_context.length; i++) {
+                    const node = ancestors_with_context[i];
+                    added_context += node.text + "\n";
+                }
+                if (ref_blocks.length > 1) {
+                    added_context += `\n ${ref_blocks}`;
+                }
+                added_context = added_context.trim();
                 let conversation = [];
+                console.log("Here");
                 for (let i = 0; i < longest_lineage.length; i++) {
                     const node = longest_lineage[i];
-                    const text = node.text;
+                    let text = "";
+                    console.log(node);
+                    if (node.type === "text") {
+                        text = node.text;
+                    } else if (node.type === "file" && node.file.includes(".pdf")) {
+                        const file_name = node.file;
+                        // const files = await this.app.vault.getFiles();
+                        // const foundFile = files.find((file) => file.basename === file_name);
+                        text = await this.extractTextFromPDF(file_name);
+                        console.log("Got text");
+                        console.log(text);
+                        added_context += text;
+                        const role = "assistant";
+                        const message = {
+                            role,
+                            content: text,
+                        };
+                        conversation.push(message);
+                        continue;
+                    }
+
                     const userRegex = /<role>User<\/role>/i;
                     const assistantRegex = /<role>assistant<\/role>/i;
 
                     if (userRegex.test(text)) {
                         const split_text = text.split(userRegex);
                         const role = "user";
-                        const content = split_text[1].trim();
+                        let content = split_text[1].trim();
+                        // Only for the first node
+                        if (added_context.length > 1 && i === 0) {
+                            content += `\n${added_context}`;
+                        }
                         const message = {
                             role,
                             content,
@@ -1265,43 +1425,65 @@ export default class MyPlugin extends Plugin {
                 const data = {
                     conversation,
                 };
+                let model_choice = "openai-gpt-4";
+                let node_content = "";
+                if (model_choice === "local") {
+                    // This is for local
+                    try {
+                        const response = await fetch("http://localhost:8000/conversation", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify(data),
+                        });
+                        const output = await response.json();
+                        console.log(output);
+                        if (output) {
+                            node_content = `<role>assistant</role>\n${output.response}`;
+                            // const x = node.x + node.width + 200;
+                            // this.childNode(canvas, node, x, node.y, content);
+                        }
+                    } catch (error) {
+                        console.error("Error:", error);
+                    }
+                }
 
-                // This is for local
-                // try {
-                //     const response = await fetch("http://localhost:8000/conversation", {
-                //         method: "POST",
-                //         headers: {
-                //             "Content-Type": "application/json",
-                //         },
-                //         body: JSON.stringify(data),
-                //     });
-                //     const output = await response.json();
-                //     console.log(output);
-                //     if (output) {
-                //         const content = `<role>assistant</role>\n${output.response}`;
-                //         const x = node.x + node.width + 200;
-                //         this.childNode(canvas, node, x, node.y, content);
-                //     }
-                // } catch (error) {
-                //     console.error("Error:", error);
-                // }
-                const model = "llama3-70b-8192";
+                if (model_choice === "groq") {
+                    const model = "llama3-70b-8192";
 
-                const params = {
-                    messages: conversation,
-                    model: model,
-                    // tools: tools,
-                    // tool_choice: tool_choice,
-                    max_tokens: 12000,
-                    stop: null,
-                };
+                    const params = {
+                        messages: conversation,
+                        model: model,
+                        // tools: tools,
+                        // tool_choice: tool_choice,
+                        max_tokens: 12000,
+                        stop: null,
+                    };
 
-                // @ts-ignore
-                new Notice("Calling Groq!");
-                const chat_completion: OpenAI.Chat.ChatCompletion = await groq.chat.completions.create(params);
-                console.log(chat_completion);
-                const content = chat_completion.choices[0].message.content;
-                const node_content = `<role>assistant</role>\n${content}`;
+                    // @ts-ignore
+                    new Notice("Calling Groq!");
+                    const chat_completion: OpenAI.Chat.ChatCompletion = await groq.chat.completions.create(params);
+                    new Notice("Message back from Groq");
+
+                    const content = chat_completion.choices[0].message.content;
+                    node_content = `<role>assistant</role>\n${content}`;
+                }
+
+                if (model_choice === "openai-gpt-4") {
+                    const model = "gpt-4-1106-preview";
+                    const params = {
+                        messages: conversation,
+                        model: model,
+                    };
+                    // @ts-ignore
+                    new Notice("Calling GPT-4!");
+                    const chat_completion: OpenAI.Chat.ChatCompletion = await openai.chat.completions.create(params);
+                    new Notice("Message back from GPT-4!");
+                    // const chat_completion: OpenAI.Chat.ChatCompletion = await groq.chat.completions.create(params);
+                    const content = chat_completion.choices[0].message.content;
+                    node_content = `<role>assistant</role>\n${content}`;
+                }
                 const x = node.x + node.width + 200;
                 this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
             });
@@ -1331,9 +1513,6 @@ export default class MyPlugin extends Plugin {
 
         const node = canvas.nodes?.get(tempChildNode?.id!);
         if (!node) return;
-        if (origin === "groq") {
-            new Notice("Message back from Groq");
-        }
 
         // canvas.selectOnly(node);
 

@@ -1,30 +1,33 @@
 {
-  "name": "caret",
-  "version": "1.0.0",
-  "description": "This is caret",
-  "main": "main.js",
-  "scripts": {
-    "dev": "node esbuild.config.mjs",
-    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-    "version": "node version-bump.mjs && git add manifest.json versions.json"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "MIT",
-  "devDependencies": {
-    "@types/node": "^16.11.6",
-    "@typescript-eslint/eslint-plugin": "5.29.0",
-    "@typescript-eslint/parser": "5.29.0",
-    "builtin-modules": "3.3.0",
-    "esbuild": "0.17.3",
-    "obsidian": "latest",
-    "tslib": "2.4.0",
-    "typescript": "4.7.4"
-  },
-  "dependencies": {
-    "@codemirror/language": "^6.10.1",
-    "dotenv": "^16.4.5",
-    "groq-sdk": "^0.3.3",
-    "monkey-around": "^3.0.0"
-  }
+    "name": "caret",
+    "version": "1.0.0",
+    "description": "This is caret",
+    "main": "main.js",
+    "scripts": {
+        "dev": "node esbuild.config.mjs",
+        "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+        "version": "node version-bump.mjs && git add manifest.json versions.json"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "MIT",
+    "devDependencies": {
+        "@types/node": "^16.11.6",
+        "@typescript-eslint/eslint-plugin": "5.29.0",
+        "@typescript-eslint/parser": "5.29.0",
+        "builtin-modules": "3.3.0",
+        "esbuild": "0.17.3",
+        "obsidian": "latest",
+        "tslib": "2.4.0",
+        "typescript": "4.7.4"
+    },
+    "dependencies": {
+        "@bundled-es-modules/pdfjs-dist": "^3.6.172-alpha.1",
+        "@codemirror/language": "^6.10.1",
+        "dotenv": "^16.4.5",
+        "groq-sdk": "^0.3.3",
+        "monkey-around": "^3.0.0",
+        "openai": "^4.42.0",
+        "pdf-lib": "^1.17.1"
+    }
 }
