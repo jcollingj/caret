@@ -27,7 +27,9 @@
         "dotenv": "^16.4.5",
         "groq-sdk": "^0.3.3",
         "monkey-around": "^3.0.0",
+        "ollama": "^0.5.0",
         "openai": "^4.42.0",
-        "pdf-lib": "^1.17.1"
+        "pdf-lib": "^1.17.1",
+        "xml2js": "^0.6.2"
     }
 }

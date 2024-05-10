@@ -1,5 +1,6 @@
+var parseString = require("xml2js").parseString;
+import ollama from "ollama/browser";
 import pdfjs from "@bundled-es-modules/pdfjs-dist/build/pdf";
-import viewer from "@bundled-es-modules/pdfjs-dist/web/pdf_viewer";
 import OpenAI from "openai";
 import Groq from "groq-sdk";
 import { around } from "monkey-around";
@@ -19,23 +20,11 @@ import {
     setIcon,
     View,
 } from "obsidian";
-import {
-    NodeSide,
-    EdgeEnd,
-    CanvasColor,
-    CanvasData,
-    CanvasEdgeData,
-    CanvasFileData,
-    CanvasGroupData,
-    CanvasLinkData,
-    CanvasNodeData,
-    CanvasTextData,
-    AllCanvasNodeData,
-} from "obsidian/canvas";
-import { syntaxTree } from "@codemirror/language";
+import { CanvasData, CanvasFileData, CanvasNodeData, CanvasTextData } from "obsidian/canvas";
 import { Extension, RangeSetBuilder, StateField, Transaction } from "@codemirror/state";
-import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
+import { Decoration, DecorationSet, EditorView } from "@codemirror/view";
 import * as dotenv from "dotenv";
+import { messages } from "@prisma/client";
 // dotenv.config({ debug: true}
 
 const basePath = "/Users/jacobcolling/Documents/accelerate/accelerate/";
@@ -44,21 +33,16 @@ dotenv.config({
     path: `${basePath}/.obsidian/plugins/caret/.env`,
 });
 
-const groq_api_key = process.env.GROQ_API_KEY;
-const openai_key = process.env.OPENAI_KEY;
-const groq = new Groq({ apiKey: groq_api_key, dangerouslyAllowBrowser: true });
-const openai = new OpenAI({ apiKey: openai_key, dangerouslyAllowBrowser: true });
+type Message = {
+    content: string;
+    role: string;
+};
 
 // Start of node and edge functions
 interface edgeT {
     fromOrTo: string;
     side: string;
     node: CanvasNodeData;
-}
-
-interface TreeNode {
-    id: string;
-    children: TreeNode[];
 }
 
 interface Node {
@@ -255,148 +239,152 @@ export const redBackgroundField = StateField.define<DecorationSet>({
 });
 // Remember to rename these classes and interfaces!
 
-interface MyPluginSettings {
-    mySetting: string;
+interface CaretPluginSettings {
+    model: string;
+    llm_provider: string;
+    openai_api_key: string;
+    groq_api_key: string;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-    mySetting: "default",
+const DEFAULT_SETTINGS: CaretPluginSettings = {
+    model: "",
+    llm_provider: "",
+    openai_api_key: "",
+    groq_api_key: "",
 };
 
-export const VIEW_NAME_SIDEBAR_CHAT = "sidebar-caret";
-class SidebarChat extends ItemView {
-    constructor(leaf: WorkspaceLeaf) {
-        super(leaf);
-    }
-    textBox: HTMLTextAreaElement;
-    messagesContainer: HTMLElement; // Container for messages
+// export const VIEW_NAME_SIDEBAR_CHAT = "sidebar-caret";
+// class SidebarChat extends ItemView {
+//     constructor(leaf: WorkspaceLeaf) {
+//         super(leaf);
+//     }
+//     textBox: HTMLTextAreaElement;
+//     messagesContainer: HTMLElement; // Container for messages
 
-    getViewType() {
-        return VIEW_NAME_SIDEBAR_CHAT;
-    }
+//     getViewType() {
+//         return VIEW_NAME_SIDEBAR_CHAT;
+//     }
 
-    getDisplayText() {
-        return VIEW_NAME_SIDEBAR_CHAT;
-    }
+//     getDisplayText() {
+//         return VIEW_NAME_SIDEBAR_CHAT;
+//     }
 
-    async onOpen() {
-        const metacontainer = this.containerEl.children[1];
-        metacontainer.empty();
-        const container = metacontainer.createEl("div", {
-            cls: "container",
-        });
-        metacontainer.prepend(container);
-        // this.containerEl.appendChild(container);
+//     async onOpen() {
+//         const metacontainer = this.containerEl.children[1];
+//         metacontainer.empty();
+//         const container = metacontainer.createEl("div", {
+//             cls: "container",
+//         });
+//         metacontainer.prepend(container);
+//         // this.containerEl.appendChild(container);
 
-        // Create a container for messages
-        this.messagesContainer = container.createEl("div", {
-            cls: "messages-container",
-        });
+//         // Create a container for messages
+//         this.messagesContainer = container.createEl("div", {
+//             cls: "messages-container",
+//         });
 
-        // Add a "Hello World" message
-        this.addMessage("MLX Testing", "system");
-        this.createChatInputArea(container);
-    }
-    createChatInputArea(container: HTMLElement) {
-        // Create a container for the text box and the submit button
-        const inputContainer = container.createEl("div", {
-            cls: "chat-input-container",
-        });
+//         // Add a "Hello World" message
+//         this.addMessage("MLX Testing", "system");
+//         this.createChatInputArea(container);
+//     }
+//     createChatInputArea(container: HTMLElement) {
+//         // Create a container for the text box and the submit button
+//         const inputContainer = container.createEl("div", {
+//             cls: "chat-input-container",
+//         });
 
-        // Create the text box within the input container
-        this.textBox = inputContainer.createEl("textarea", {
-            cls: "full_width_text_container",
-        });
-        this.textBox.placeholder = "Type something...";
+//         // Create the text box within the input container
+//         this.textBox = inputContainer.createEl("textarea", {
+//             cls: "full_width_text_container",
+//         });
+//         this.textBox.placeholder = "Type something...";
 
-        // Create the submit button within the input container
-        const button = inputContainer.createEl("button");
-        button.textContent = "Submit";
-        button.addEventListener("click", () => {
-            this.submitMessage(this.textBox.value);
-            this.textBox.value = ""; // Clear the text box after sending
-        });
-    }
+//         // Create the submit button within the input container
+//         const button = inputContainer.createEl("button");
+//         button.textContent = "Submit";
+//         button.addEventListener("click", () => {
+//             this.submitMessage(this.textBox.value);
+//             this.textBox.value = ""; // Clear the text box after sending
+//         });
+//     }
 
-    addMessage(text: string, sender: "user" | "system") {
-        const messageDiv = this.messagesContainer.createEl("div", {
-            cls: `message ${sender}`,
-        });
-        messageDiv.textContent = text;
-    }
+//     addMessage(text: string, sender: "user" | "system") {
+//         const messageDiv = this.messagesContainer.createEl("div", {
+//             cls: `message ${sender}`,
+//         });
+//         messageDiv.textContent = text;
+//     }
 
-    submitMessage(userMessage: string) {
-        let current_page_content = "";
-        if (userMessage.includes("@current")) {
-            // Find the first MarkdownView that is open in the workspace
-            const markdownView = this.app.workspace
-                .getLeavesOfType("markdown")
-                // @ts-ignore
-                .find((leaf) => leaf.view instanceof MarkdownView && leaf.width > 0)?.view as MarkdownView;
-            if (markdownView && markdownView.editor) {
-                current_page_content = markdownView.editor.getValue();
-            }
-        }
-        this.addMessage(userMessage, "user"); // Display the user message immediately
+//     submitMessage(userMessage: string) {
+//         let current_page_content = "";
+//         if (userMessage.includes("@current")) {
+//             // Find the first MarkdownView that is open in the workspace
+//             const markdownView = this.app.workspace
+//                 .getLeavesOfType("markdown")
+//                 // @ts-ignore
+//                 .find((leaf) => leaf.view instanceof MarkdownView && leaf.width > 0)?.view as MarkdownView;
+//             if (markdownView && markdownView.editor) {
+//                 current_page_content = markdownView.editor.getValue();
+//             }
+//         }
+//         this.addMessage(userMessage, "user"); // Display the user message immediately
 
-        const current_page_message = `
-		${userMessage}
+//         const current_page_message = `
+// 		${userMessage}
 
-		------ Note for Model --- 
-		When I am referring to @current, I meant the following:
+// 		------ Note for Model ---
+// 		When I am referring to @current, I meant the following:
 
-		${current_page_content}
-		`;
+// 		${current_page_content}
+// 		`;
 
-        let final_message = userMessage;
-        if (current_page_content.length > 0) {
-            final_message = current_page_message;
-        }
+//         let final_message = userMessage;
+//         if (current_page_content.length > 0) {
+//             final_message = current_page_message;
+//         }
 
-        const data = { message: final_message };
-        fetch("http://localhost:8000/conversation", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(data),
-        })
-            .then((response) => response.json())
-            .then((data) => {
-                this.addMessage(data.response, "system"); // Display the response
-            })
-            .catch((error) => {
-                console.error("Error:", error);
-            });
-    }
+//         const data = { message: final_message };
+//         fetch("http://localhost:8000/conversation", {
+//             method: "POST",
+//             headers: {
+//                 "Content-Type": "application/json",
+//             },
+//             body: JSON.stringify(data),
+//         })
+//             .then((response) => response.json())
+//             .then((data) => {
+//                 this.addMessage(data.response, "system"); // Display the response
+//             })
+//             .catch((error) => {
+//                 console.error("Error:", error);
+//             });
+//     }
 
-    async onClose() {
-        // Cleanup logic if necessary
-    }
-}
+//     async onClose() {
+//         // Cleanup logic if necessary
+//     }
+// }
 
 export const VIEW_NAME_MAIN_CHAT = "main-caret";
-class MainChat extends ItemView {
+class FullPageChat extends ItemView {
     chat_id: string;
-    constructor(
-        leaf: WorkspaceLeaf,
-        chat_id?: string,
-        conversation: { content: string; role: "user" | "system" }[] = []
-    ) {
+    plugin: any;
+    constructor(plugin: any, leaf: WorkspaceLeaf, chat_id?: string, conversation: Message[] = []) {
         super(leaf);
+        this.plugin = plugin;
         this.chat_id = chat_id || this.generateRandomID(5);
         this.conversation = conversation; // Initialize conversation list with default or passed value
     }
     textBox: HTMLTextAreaElement;
     messagesContainer: HTMLElement; // Container for messages
-    conversation: { content: string; role: "user" | "system" }[]; // List to store conversation messages
+    conversation: Message[]; // List to store conversation messages
 
     getViewType() {
         return VIEW_NAME_MAIN_CHAT;
     }
 
     getDisplayText() {
-        return `MLX Local Chat: ${this.chat_id}`;
+        return `Provider ${this.plugin.settings.llm_provider} | Model ${this.plugin.settings.model} | Chat: ${this.chat_id}`;
     }
 
     async onOpen() {
@@ -431,13 +419,6 @@ class MainChat extends ItemView {
             cls: "button-container",
         });
 
-        // Create the save button within the button container
-        const saveButton = buttonContainer.createEl("button");
-        saveButton.textContent = "Save Chat";
-        saveButton.addEventListener("click", () => {
-            this.saveChat(); // Call the saveChat function to save the conversation
-        });
-
         // Create the submit button within the button container
         const submitButton = buttonContainer.createEl("button");
         submitButton.textContent = "Submit";
@@ -447,7 +428,7 @@ class MainChat extends ItemView {
         });
     }
 
-    addMessage(text: string, sender: "user" | "system") {
+    addMessage(text: string, sender: "user" | "assistant") {
         // Add message to the conversation array
         this.conversation.push({ content: text, role: sender });
         // Re-render the conversation in the HTML
@@ -460,39 +441,46 @@ class MainChat extends ItemView {
 
         // Add each message in the conversation to the messages container
         this.conversation.forEach((message) => {
+            console.log({ message });
+            console.log(message.role);
+            const display_class = `message ${message.role}`;
+            console.log({ display_class });
             const messageDiv = this.messagesContainer.createEl("div", {
-                cls: `message ${message.role}`,
+                cls: display_class,
             });
             messageDiv.textContent = message.content;
         });
+        setTimeout(() => {
+            this.saveChat();
+        }, 200);
     }
 
     async submitMessage(userMessage: string) {
         this.addMessage(userMessage, "user"); // Display the user message immediately
 
-        const data = {
-            conversation: this.conversation,
-        };
-        try {
-            const response = await fetch("http://localhost:8000/conversation", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(data),
-            });
-            const output = await response.json();
-            this.addMessage(output.response, "system"); // Display the response
-        } catch (error) {
-            console.error("Error:", error);
-        }
+        const response = await this.plugin.llm_call(
+            this.plugin.settings.llm_provider,
+            this.plugin.settings.model,
+            this.conversation
+        );
+        console.log(response);
+        const content = response.content;
+        this.addMessage(content, "assistant"); // Display the response
     }
     async saveChat() {
-        const chat_folder_path = "chats/";
+        console.log("Running in save");
+        const chat_folder_path = "caret/chats";
+        console.log(chat_folder_path);
+        const chat_folder = this.app.vault.getAbstractFileByPath(chat_folder_path);
+        console.log(chat_folder);
+        if (!chat_folder) {
+            await this.app.vault.createFolder(chat_folder_path);
+        }
         const file_name = `${this.chat_id}.md`;
-        const file_path = chat_folder_path + file_name;
+        const file_path = chat_folder_path + "/" + file_name;
 
         let file_content = `\`\`\`xml
+        <root>
 		<metadata>\n<id>${this.chat_id}</id>\n</metadata>
 		`;
 
@@ -507,7 +495,7 @@ class MainChat extends ItemView {
 			`.trim();
             messages += message_xml;
         });
-        let conversation = `<conversation>\n${messages}</conversation>\`\`\``;
+        let conversation = `<conversation>\n${messages}</conversation></root>\`\`\``;
         file_content += conversation;
         const file = await this.app.vault.getFileByPath(file_path);
 
@@ -536,13 +524,27 @@ class MainChat extends ItemView {
     }
 }
 
-export default class MyPlugin extends Plugin {
-    settings: MyPluginSettings;
+export default class CaretPlugin extends Plugin {
+    settings: CaretPluginSettings;
     canvas_patched: boolean = false;
     selected_node_colors: any = {};
     color_picker_open_on_last_click: boolean = false;
+    openai_client: OpenAI;
+    groq_client: Groq;
 
     async onload() {
+        await this.loadSettings();
+        // Initialze the clients if available
+        console.log(this.settings);
+        if (this.settings.openai_api_key) {
+            console.log("Does this initialize?");
+            this.openai_client = new OpenAI({ apiKey: this.settings.openai_api_key, dangerouslyAllowBrowser: true });
+        }
+        if (this.settings.groq_api_key) {
+            this.groq_client = new Groq({ apiKey: this.settings.groq_api_key, dangerouslyAllowBrowser: true });
+        }
+
+        this.addSettingTab(new SampleSettingTab(this.app, this));
         this.addCommand({
             id: "patch-menu",
             name: "Patch Menu",
@@ -565,21 +567,25 @@ export default class MyPlugin extends Plugin {
             })
         );
 
-        await this.loadSettings();
         this.registerEditorExtension([redBackgroundField]);
 
         // Register the sidebar icon
-        this.addSidebarTab();
+        this.addChatIconToRibbon();
 
         this.addCommand({
             id: "caret-log",
             name: "Log",
             callback: async () => {
                 const currentLeaf = this.app.workspace.activeLeaf;
+                console.log(this.settings);
+                const path = "caret/chats";
+                const folder = this.app.vault.getFolderByPath(path);
+                console.log({ folder });
+
                 if (currentLeaf?.view.getViewType() === "canvas") {
                     const canvasView = currentLeaf.view;
                     const canvas = (canvasView as any).canvas;
-                    console.log(canvas);
+                    // console.log(canvas);
                     const viewportNodes = canvas.getViewportNodes();
                 }
             },
@@ -650,8 +656,14 @@ export default class MyPlugin extends Plugin {
                         Given this content:
                         ${all_text}
                         `;
+                        const conversation: Message[] = [{ role: "user", content: prompt }];
 
-                        const content = await one_shot(prompt);
+                        const message: Message = await this.llm_call(
+                            this.settings.llm_provider,
+                            this.settings.model,
+                            conversation
+                        );
+                        const content = message.content;
                         const textNodeConfig = {
                             pos: { x: max_x + 50, y: average_y }, // Position on the canvas
                             size: { width: average_width, height: average_height }, // Size of the text box
@@ -668,22 +680,6 @@ export default class MyPlugin extends Plugin {
                         node.zoomToSelection();
                     };
                     modal.open();
-                }
-            },
-        });
-
-        this.addCommand({
-            id: "create-child",
-            name: "Create Child",
-            callback: async () => {
-                const currentLeaf = this.app.workspace.activeLeaf;
-                if (currentLeaf?.view.getViewType() === "canvas") {
-                    const canvasView = currentLeaf.view;
-                    const canvas = (canvasView as any).canvas;
-                    const selection = canvas.selection;
-                    const selectionIterator = selection.values();
-                    const node = selectionIterator.next().value;
-                    childNode(canvas, node, node.y);
                 }
             },
         });
@@ -707,8 +703,8 @@ export default class MyPlugin extends Plugin {
         });
 
         // Register the custom view
-        this.registerView(VIEW_NAME_SIDEBAR_CHAT, (leaf) => new SidebarChat(leaf));
-        this.registerView(VIEW_NAME_MAIN_CHAT, (leaf) => new MainChat(leaf));
+        // this.registerView(VIEW_NAME_SIDEBAR_CHAT, (leaf) => new SidebarChat(leaf));
+        this.registerView(VIEW_NAME_MAIN_CHAT, (leaf) => new FullPageChat(this, leaf));
         // Define a command to insert text into the sidebar
         this.addCommand({
             id: "insert-text-into-sidebar",
@@ -763,7 +759,9 @@ export default class MyPlugin extends Plugin {
                 };
                 // @ts-ignore
                 new Notice("Calling GPT-4!");
-                const chat_completion: OpenAI.Chat.ChatCompletion = await openai.chat.completions.create(params);
+                const chat_completion: OpenAI.Chat.ChatCompletion = await this.openai_client.chat.completions.create(
+                    params
+                );
                 new Notice("Message back from GPT-4!");
                 // const chat_completion: OpenAI.Chat.ChatCompletion = await groq.chat.completions.create(params);
                 const content = chat_completion.choices[0].message.content;
@@ -781,18 +779,28 @@ export default class MyPlugin extends Plugin {
                     let content = editor.getValue();
                     content = content.replace("```xml", "").trim();
                     content = content.replace("```", "").trim();
-                    const xml = parseCustomXML(content);
-                    const convo_id = xml.metadata.id;
-                    const messages = xml.conversation.messages;
+
+                    console.log(content);
+                    const xml_object = await this.parseXml(content);
+                    console.log(xml_object);
+                    console.log(xml_object.root);
+                    console.log(xml_object.root.metadata);
+                    console.log(xml_object.root.metadata[0]);
+                    const convo_id = xml_object.root.metadata[0].id[0];
+                    const messages_from_xml = xml_object.root.conversation[0].message;
+                    const messages: Message[] = [];
+                    for (let i = 0; i < messages_from_xml.length; i++) {
+                        console.log(messages_from_xml[i].role);
+                        const role = messages_from_xml[i].role[0];
+                        const content = messages_from_xml[i].content[0];
+                        messages.push({ role, content });
+                    }
+
+                    console.log(messages);
 
                     if (convo_id && messages) {
                         const leaf = this.app.workspace.getLeaf(true);
-                        const chatView = new MainChat(leaf, convo_id, messages);
-                        // await leaf.setViewState({
-                        //     type: VIEW_NAME_MAIN_CHAT,
-                        //     state: { chatId: convo_id, messages: messages },
-                        //     active: true,
-                        // });
+                        const chatView = new FullPageChat(this, leaf, convo_id, messages);
                         leaf.open(chatView);
                         this.app.workspace.revealLeaf(leaf);
                     } else {
@@ -1197,6 +1205,21 @@ export default class MyPlugin extends Plugin {
         }
         this.highlight_lineage();
     }
+    async parseXml(xmlString: string): Promise<any> {
+        try {
+            const result = await new Promise((resolve, reject) => {
+                parseString(xmlString, (err, result) => {
+                    if (err) reject(err);
+                    else resolve(result);
+                });
+            });
+            console.dir(result);
+            return result;
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
     parseCustomXML(xmlString: string, tags: string[]) {
         console.log("In parse custom");
         console.log({ tags, xmlString });
@@ -1363,21 +1386,34 @@ export default class MyPlugin extends Plugin {
 
         return longestLineage;
     }
-    getDirectAncestorsWithContext(nodes: Node[], edges: Edge[], nodeId: string): Node[] {
-        let directAncestorsWithContext: Node[] = [];
+    async getDirectAncestorsWithContext(nodes: Node[], edges: Edge[], nodeId: string): Promise<string> {
+        let direct_ancentors_context = "";
 
         const startNode = nodes.find((node) => node.id === nodeId);
-        if (!startNode) return [];
+        if (!startNode) return "";
 
         const incomingEdges: Edge[] = edges.filter((edge) => edge.toNode === nodeId);
-        incomingEdges.forEach((edge) => {
+        for (let i = 0; i < incomingEdges.length; i++) {
+            const edge = incomingEdges[i];
             const ancestor = nodes.find((node) => node.id === edge.fromNode);
             if (ancestor && ancestor.type === "text" && ancestor.text.includes("<context>")) {
-                directAncestorsWithContext.push(ancestor);
+                direct_ancentors_context += ancestor.text + "\n";
+            } else if (ancestor && ancestor.type === "file" && ancestor.file.includes(".md")) {
+                console.log("Does this file?");
+                const file_path = ancestor.file;
+                const file = this.app.vault.getFileByPath(file_path);
+                if (file) {
+                    const context = await this.app.vault.cachedRead(file);
+                    direct_ancentors_context += "\n" + context;
+                } else {
+                    console.error("File not found:", file_path);
+                }
             }
-        });
+        }
+        console.log("Returning here");
+        console.log(direct_ancentors_context);
 
-        return directAncestorsWithContext;
+        return direct_ancentors_context;
     }
 
     async get_ref_blocks_content(node: any): Promise<string> {
@@ -1426,9 +1462,7 @@ export default class MyPlugin extends Plugin {
         const { edges, nodes } = canvas_data;
         const nodes_iterator = canvas.nodes.values();
         let node = null;
-        console.log(node_id);
         for (const node_objs of nodes_iterator) {
-            console.log(node_objs);
             if (node_objs.id === node_id) {
                 node = node_objs;
                 break;
@@ -1440,8 +1474,6 @@ export default class MyPlugin extends Plugin {
         }
 
         // Continue with operations on `target_node`
-        console.log("Found node:");
-        console.log(node);
         if (node.hasOwnProperty("file")) {
             console.log("Node has a 'file' attribute.");
             const file_path = node.file.path;
@@ -1525,29 +1557,28 @@ export default class MyPlugin extends Plugin {
                         await Promise.all(sparklePromises);
                     }
                     return;
+                } else {
+                    console.log("Does anything happen here? Should it?");
                 }
             } else {
                 console.error("File not found or is not a readable file:", file_path);
             }
         }
-        console.log("Running just a normal node?? This print 3 times");
 
         // const ancestors = this.get_ancestors(nodes, edges, node.id);
         // const all_ancestors = this.getAllAncestorNodes(nodes, edges, node.id);
         const longest_lineage = this.getLongestLineage(nodes, edges, node.id);
 
-        const ancestors_with_context = this.getDirectAncestorsWithContext(nodes, edges, node.id);
+        const ancestors_with_context = await this.getDirectAncestorsWithContext(nodes, edges, node.id);
         // TODO - This needs to be cleaned up. Not sure what's going on with this
         // I would think it shoudl be plural. But it;'s only checking one node?
         const ref_blocks = await this.get_ref_blocks_content(node);
         let added_context = ``;
-        for (let i = 0; i < ancestors_with_context.length; i++) {
-            const node = ancestors_with_context[i];
-            added_context += node.text + "\n";
-        }
+
         if (ref_blocks.length > 1) {
             added_context += `\n ${ref_blocks}`;
         }
+        added_context += "\n" + ancestors_with_context;
         added_context = added_context.trim();
         let conversation = [];
 
@@ -1600,90 +1631,155 @@ export default class MyPlugin extends Plugin {
             }
         }
         conversation.reverse();
+        const message = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
+        const content = message.content;
+        const node_content = `<role>assistant</role>\n${content}`;
+        const x = node.x + node.width + 200;
+        this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
 
-        const data = {
-            conversation,
-        };
-        const total_conversation_length = conversation.reduce((total, message) => {
-            return total + message.content.split(/\s+/).filter(Boolean).length;
-        }, 0);
-        console.log(`Total word count in conversation: ${total_conversation_length}`);
-        let model_choice = "groq";
-        // TODO - Refactor this out
-        if (total_conversation_length > 10000) {
-            model_choice = "openai-gpt-4";
-        }
-        let node_content = "";
-        if (model_choice === "local") {
-            // This is for local
-            try {
-                const response = await fetch("http://localhost:8000/conversation", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify(data),
-                });
-                const output = await response.json();
-                if (output) {
-                    node_content = `<role>assistant</role>\n${output.response}`;
-                    // const x = node.x + node.width + 200;
-                    // this.childNode(canvas, node, x, node.y, content);
-                }
-            } catch (error) {
-                console.error("Error:", error);
-            }
-        }
+        // let node_content = "";
+        // if (model_choice === "local") {
+        //     // This is for local
+        //     try {
+        //         const response = await fetch("http://localhost:8000/conversation", {
+        //             method: "POST",
+        //             headers: {
+        //                 "Content-Type": "application/json",
+        //             },
+        //             body: JSON.stringify(data),
+        //         });
+        //         const output = await response.json();
+        //         if (output) {
+        //             node_content = `<role>assistant</role>\n${output.response}`;
+        //             // const x = node.x + node.width + 200;
+        //             // this.childNode(canvas, node, x, node.y, content);
+        //         }
+        //     } catch (error) {
+        //         console.error("Error:", error);
+        //     }
+        // }
 
-        if (model_choice === "groq") {
-            const model = "llama3-70b-8192";
+        // if (model_choice === "groq") {
+        //     const model = "llama3-70b-8192";
 
-            const params = {
-                messages: conversation,
-                model: model,
-                // tools: tools,
-                // tool_choice: tool_choice,
-                max_tokens: 12000,
-                stop: null,
-            };
-            // @ts-ignore
-            new Notice("Calling Groq!");
-            groq.chat.completions
-                .create(params)
-                .then((chat_completion) => {
-                    new Notice("Message back from Groq!");
-                    const content = chat_completion.choices[0].message.content;
-                    const node_content = `<role>assistant</role>\n${content}`;
-                    const x = node.x + node.width + 200;
-                    this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
-                })
-                .catch((error) => {
-                    console.error("Error fetching chat completion from Groq:", error);
-                });
-        }
-        if (model_choice === "openai-gpt-4") {
-            const model = "gpt-4-1106-preview";
-            const params = {
-                messages: conversation,
-                model: model,
-            };
-            // @ts-ignore
-            new Notice("Calling GPT-4!");
-            openai.chat.completions
-                .create(params)
-                .then((chat_completion) => {
-                    new Notice("Message back from GPT-4!");
-                    const content = chat_completion.choices[0].message.content;
-                    const node_content = `<role>assistant</role>\n${content}`;
-                    const x = node.x + node.width + 200;
-                    this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
-                })
-                .catch((error) => {
-                    console.error("Error fetching chat completion:", error);
-                });
-        }
+        //     const params = {
+        //         messages: conversation,
+        //         model: model,
+        //         // tools: tools,
+        //         // tool_choice: tool_choice,
+        //         max_tokens: 12000,
+        //         stop: null,
+        //     };
+        //     // @ts-ignore
+        //     new Notice("Calling Groq!");
+        //     groq.chat.completions
+        //         .create(params)
+        //         .then((chat_completion) => {
+        //             new Notice("Message back from Groq!");
+
+        //         })
+        //         .catch((error) => {
+        //             console.error("Error fetching chat completion from Groq:", error);
+        //         });
+        // }
+        // if (model_choice === "openai-gpt-4") {
+        //     const model = "gpt-4-1106-preview";
+        //     const params = {
+        //         messages: conversation,
+        //         model: model,
+        //     };
+        //     // @ts-ignore
+        //     new Notice("Calling GPT-4!");
+        //     this.openai_client.chat.completions
+        //         .create(params)
+        //         .then((chat_completion) => {
+        //             new Notice("Message back from GPT-4!");
+        //             const content = chat_completion.choices[0].message.content;
+        //             const node_content = `<role>assistant</role>\n${content}`;
+        //             const x = node.x + node.width + 200;
+        //             this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
+        //         })
+        //         .catch((error) => {
+        //             console.error("Error fetching chat completion:", error);
+        //         });
+        // }
         // const x = node.x + node.width + 200;
         // this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
+    }
+
+    async llm_call(provider: string, model: string, conversation: any[]): Promise<Message> {
+        console.log("Running in LLM Call");
+        console.log({ provider, model, conversation });
+
+        if (provider === "ollama") {
+            // Only one model here right now.
+            console.log({ conversation });
+            let model_param = model;
+            new Notice("Calling ollama");
+            try {
+                const response = await ollama.chat({
+                    model: model_param,
+                    messages: conversation,
+                });
+                new Notice("Message back from ollama");
+                return response.message;
+            } catch (error) {
+                console.error(error);
+                if (error.message) {
+                    new Notice(error.message);
+                }
+                throw error;
+            }
+        } else if (provider == "openai") {
+            if (!this.openai_client) {
+                const error_message = "API Key not configured for OpenAI";
+                new Notice(error_message);
+                throw new Error(error_message);
+            }
+            new Notice("Calling OpenAI");
+            const params = {
+                messages: conversation,
+                model: model,
+            };
+            try {
+                const completion = await this.openai_client.chat.completions.create(params);
+                new Notice("Message back from OpenAI");
+                console.log(completion);
+                const message = completion.choices[0].message as Message;
+                return message;
+            } catch (error) {
+                console.error("Error fetching chat completion from OpenAI:", error);
+                new Notice(error.message);
+                throw error;
+            }
+        } else if (provider == "groq") {
+            if (!this.groq_client) {
+                const error_message = "API Key not configured for Groq";
+                new Notice(error_message);
+                throw new Error(error_message);
+            }
+            new Notice("Calling Groq");
+
+            const params = {
+                messages: conversation,
+                model: model,
+            };
+            try {
+                const completion = await this.groq_client.chat.completions.create(params);
+                new Notice("Message back from Groq");
+                console.log(completion);
+                const message = completion.choices[0].message as Message;
+                return message;
+            } catch (error) {
+                console.error("Error fetching chat completion from OpenAI:", error);
+                new Notice(error.message);
+                throw error;
+            }
+        } else {
+            const error_message = "Invalid llm provider / model configuration";
+            new Notice(error_message);
+            throw new Error(error_message);
+        }
     }
 
     addAIButtonIfNeeded(menuEl: HTMLElement) {
@@ -1864,31 +1960,9 @@ export default class MyPlugin extends Plugin {
             }
         });
     }
-    addSidebarTab() {
-        this.addRibbonIcon("document", "Open Caret", async (evt) => {
-            // Check if the view is already present in any leaf
-
-            // This creates the view in the sidebar
-            // let found = false;
-            // this.app.workspace.iterateAllLeaves((leaf) => {
-            //     if (leaf.view.getViewType() === VIEW_NAME_SIDEBAR_CHAT) {
-            //         found = true;
-            //         // If the view is not the active view, bring it into focus
-            //         if (!leaf.view.containerEl.parentElement.classList.contains("is-active")) {
-            //             this.app.workspace.revealLeaf(leaf);
-            //         }
-            //     }
-            // });
-
-            // // If the view was not found, create it in the right sidebar
-            // if (!found) {
-            //     await this.app.workspace.getRightLeaf(false).setViewState({
-            //         type: VIEW_NAME_SIDEBAR_CHAT,
-            //         active: true,
-            //     });
-            //     this.app.workspace.revealLeaf(this.app.workspace.getLeaf(true));
-            // }
-
+    addChatIconToRibbon() {
+        console.log("Add side bar runs");
+        this.addRibbonIcon("message-square", "Caret Chat", async (evt) => {
             let main_chat_found = false;
             this.app.workspace.iterateAllLeaves((leaf) => {
                 if (leaf.view.getViewType() === VIEW_NAME_MAIN_CHAT) {
@@ -1907,7 +1981,6 @@ export default class MyPlugin extends Plugin {
                     type: VIEW_NAME_MAIN_CHAT,
                     active: true,
                 });
-                // this.app.workspace.revealLeaf(this.app.workspace.getLeaf(true));
             }
         });
     }
@@ -1915,6 +1988,8 @@ export default class MyPlugin extends Plugin {
     onunload() {}
 
     async loadSettings() {
+        console.log("Loading settings");
+        console.log(await this.loadData());
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     }
 
@@ -1924,9 +1999,9 @@ export default class MyPlugin extends Plugin {
 }
 
 class SampleSettingTab extends PluginSettingTab {
-    plugin: MyPlugin;
+    plugin: CaretPlugin;
 
-    constructor(app: App, plugin: MyPlugin) {
+    constructor(app: App, plugin: CaretPlugin) {
         super(app, plugin);
         this.plugin = plugin;
     }
@@ -1935,18 +2010,127 @@ class SampleSettingTab extends PluginSettingTab {
         const { containerEl } = this;
 
         containerEl.empty();
+        const llm_provider_options = {
+            openai: { "gpt-4-turbo": "gpt-4-turbo", "gpt-3.5-turbo": "gpt-3.5-turbo" },
+            groq: {
+                "llama3-8b-8192": "Llama 8B",
+                "llama3-70b-8192": "Llama 70B",
+                "mixtral-8x7b-32768": "Mixtral 8x7b",
+                "gemma-7b-it": "Gemma 7B",
+            },
+            ollama: { llama3: "llama3 8B", phi3: "Phi-3 3.8B", mistral: "Mistral 7B", gemma: "Gemma 7B" },
+        };
+        console.log("rendering display here");
+        console.log(this.plugin.settings);
+        const model_options_data = llm_provider_options[this.plugin.settings.llm_provider];
+        console.log(model_options_data);
+
+        // LLM Provider Settings
+        new Setting(containerEl)
+            .setName("LLM Provider")
+            .setDesc("")
+            .addDropdown((dropdown) => {
+                dropdown
+                    .addOptions({
+                        openai: "OpenAI",
+                        groq: "Groq",
+                        ollama: "ollama",
+                    })
+                    .setValue(this.plugin.settings.llm_provider)
+                    .onChange(async (provider) => {
+                        console.log("On change this executes?");
+                        this.plugin.settings.llm_provider = provider;
+                        this.plugin.settings.model = Object.keys(llm_provider_options[provider])[0];
+                        await this.plugin.saveSettings();
+                        await this.plugin.loadSettings();
+                        console.log(this.plugin.settings);
+                        console.log(this);
+                        this.display();
+                    });
+            });
+        new Setting(containerEl)
+            .setName("Model")
+            .setDesc("")
+            .addDropdown((modelDropdown) => {
+                modelDropdown.addOptions(model_options_data);
+                modelDropdown.setValue(this.plugin.settings.model);
+                modelDropdown.onChange(async (value) => {
+                    this.plugin.settings.model = value;
+                    await this.plugin.saveSettings();
+                    await this.plugin.loadSettings();
+                    console.log(this.plugin.settings);
+                    this.display();
+                });
+            });
+        if (this.plugin.settings.llm_provider === "ollama") {
+            const ollama_info_container = containerEl.createEl("div", {
+                cls: "settings_container",
+            });
+            ollama_info_container.createEl("strong", { text: "You're using Ollama!" });
+            ollama_info_container.createEl("p", { text: "Remember to do the following:" });
+            ollama_info_container.createEl("p", { text: "Make sure you have downloaded the model you want to use:" });
+            const second_code_block_container = ollama_info_container.createEl("div", {
+                cls: "settings_code_block",
+            });
+
+            second_code_block_container.createEl("code", { text: `ollama run ${this.plugin.settings.model}` });
+            ollama_info_container.createEl("p", {
+                text: "After running the model, kill that command and close the ollama app.",
+            });
+            ollama_info_container.createEl("p", {
+                text: "Then run this command to start the Ollama server and make it accessible from Obsidian:",
+            });
+            const code_block_container = ollama_info_container.createEl("div", {
+                cls: "settings_code_block",
+            });
+            code_block_container.createEl("code", {
+                text: "OLLAMA_ORIGINS=app://obsidian.md* ollama serve",
+            });
+
+            ollama_info_container.createEl("br"); // Adds a line break for spacing
+        }
 
         new Setting(containerEl)
-            .setName("Setting #1")
-            .setDesc("It's a secret")
-            .addText((text) =>
-                text
-                    .setPlaceholder("Enter your secret")
-                    .setValue(this.plugin.settings.mySetting)
-                    .onChange(async (value) => {
-                        this.plugin.settings.mySetting = value;
+            .setName("OpenAI API Key")
+            .setDesc("")
+            .addText((text) => {
+                text.setPlaceholder("OpenAI API Key")
+                    .setValue(this.plugin.settings.openai_api_key)
+                    .onChange(async (value: string) => {
+                        this.plugin.settings.openai_api_key = value;
                         await this.plugin.saveSettings();
-                    })
-            );
+                        await this.plugin.loadSettings();
+                        console.log(this.plugin.settings);
+                    });
+                text.inputEl.addClass("hidden-value-unsecure");
+            });
+
+        new Setting(containerEl)
+            .setName("Groq API Key")
+            .setDesc("")
+            .addText((text) => {
+                text.setPlaceholder("Grok API Key")
+                    .setValue(this.plugin.settings.groq_api_key)
+                    .onChange(async (value: string) => {
+                        this.plugin.settings.groq_api_key = value;
+                        await this.plugin.saveSettings();
+                        await this.plugin.loadSettings();
+                        console.log(this.plugin.settings);
+                    });
+                text.inputEl.addClass("hidden-value-unsecure");
+            });
+        new Setting(containerEl)
+            .setName("Save Settings")
+            .setDesc("Settings save automatically. But you can also click this to be extra sure they saved.")
+            .addButton((button) => {
+                button
+                    .setButtonText("Save")
+                    .setClass("save-button")
+                    .onClick(async (evt: MouseEvent) => {
+                        await this.plugin.saveSettings();
+                        await this.plugin.loadSettings();
+                        new Notice("Settings Saved!");
+                    });
+            });
     }
 }

@@ -28,6 +28,7 @@
     max-width: calc(100% - 10px); /* Prevent overflow */
     word-wrap: break-word; /* Ensure long words do not cause overflow */
     white-space: pre-wrap; /* Preserve whitespace and formatting */
+    user-select:text;
 }
 
 .message.user, .message.system {
@@ -37,7 +38,7 @@
     white-space: pre-wrap; /* Preserve whitespace and formatting */
 }
 
-.message.system {
+.message.assistant {
     background-color: #d1e7dd;
     white-space: pre-wrap; /* Preserve whitespace and formatting */
 }
@@ -76,4 +77,21 @@
 }
 .mb-4 {
     margin-bottom: 16px; /* 1rem typically equals 16px */
+}
+.settings_container {
+    background-color: rgb(187, 187, 187); padding: 10px; margin-bottom: 10px;
+    border-radius: 4px; /* Rounded corners */
+    user-select: auto;
+    z-index: 1000000;
+    user-select:text;
+}
+.settings_code_block {
+    background-color: #fbf4f4; /* Light grey background */
+    border-radius: 4px; /* Rounded corners */
+    padding: 4px;
+    user-select:text;
+    z-index: 1000000;
+}
+.hidden-value-unsecure {
+    -webkit-text-security: disc;
 }
