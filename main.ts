@@ -538,6 +538,10 @@ class MainChat extends ItemView {
 
 export default class MyPlugin extends Plugin {
     settings: MyPluginSettings;
+    canvas_patched: boolean = false;
+    selected_node_colors: any = {};
+    color_picker_open_on_last_click: boolean = false;
+
     async onload() {
         this.addCommand({
             id: "patch-menu",
@@ -546,10 +550,16 @@ export default class MyPlugin extends Plugin {
                 this.patchCanvasMenu();
             },
         });
+        this.registerEvent(this.app.workspace.on("layout-change", () => {}));
+        const that = this;
+
         this.registerEvent(
             this.app.workspace.on("active-leaf-change", () => {
                 const currentLeaf = this.app.workspace.activeLeaf;
+
                 if (currentLeaf?.view.getViewType() === "canvas") {
+                    const canvas = currentLeaf.view;
+
                     this.patchCanvasMenu();
                 }
             })
@@ -562,13 +572,14 @@ export default class MyPlugin extends Plugin {
         this.addSidebarTab();
 
         this.addCommand({
-            id: "log",
+            id: "caret-log",
             name: "Log",
             callback: async () => {
                 const currentLeaf = this.app.workspace.activeLeaf;
                 if (currentLeaf?.view.getViewType() === "canvas") {
                     const canvasView = currentLeaf.view;
                     const canvas = (canvasView as any).canvas;
+                    console.log(canvas);
                     const viewportNodes = canvas.getViewportNodes();
                 }
             },
@@ -761,43 +772,6 @@ export default class MyPlugin extends Plugin {
             }
         }
 
-        function parseCustomXML(xmlString: string) {
-            // Function to extract content between tags
-            function getContent(tag: string, string: string) {
-                const openTag = `<${tag}>`;
-                const closeTag = `</${tag}>`;
-                const start = string.indexOf(openTag) + openTag.length;
-                const end = string.indexOf(closeTag);
-                return string.substring(start, end).trim();
-            }
-
-            // Extract conversation ID
-            const conversationId = getContent("id", xmlString);
-
-            // Initialize the result object with metadata
-            const result = {
-                metadata: {
-                    id: conversationId,
-                },
-                conversation: {
-                    messages: [],
-                },
-            };
-
-            // Extract messages
-            const messagesContent = getContent("conversation", xmlString);
-            const messageTags = messagesContent.split("</message>").slice(0, -1); // Split and remove last empty element
-
-            for (const messageTag of messageTags) {
-                const role = getContent("role", messageTag);
-                const content = getContent("content", messageTag);
-                //@ts-ignore // TODO - Remove this and fix it
-                result.conversation.messages.push({ role, content });
-            }
-
-            return result;
-        }
-
         this.addCommand({
             id: "open-chat",
             name: "Open Chat",
@@ -860,20 +834,96 @@ export default class MyPlugin extends Plugin {
         });
     }
 
+    async highlight_lineage() {
+        await new Promise((resolve) => setTimeout(resolve, 200)); // Sleep for 200 milliseconds
+        console.log("Running highlight lineage");
+
+        const canvas_view = this.app.workspace.getLeavesOfType("canvas").first()?.view;
+        if (!canvas_view) {
+            return;
+        }
+        const canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
+
+        const selection = canvas.selection;
+        const selection_iterator = selection.values();
+        const node = selection_iterator.next().value;
+        if (!node) {
+            return;
+        }
+        const nodes_iterator = canvas.nodes.values();
+        const nodes_array = Array.from(nodes_iterator);
+        const canvas_data = canvas.getData();
+        const { edges, nodes } = canvas_data;
+        const longest_lineage = await this.getLongestLineage(nodes, edges, node.id);
+
+        // Create a set to track lineage node IDs for comparison
+        const lineage_node_ids = new Set(longest_lineage.map((node) => node.id));
+
+        // Iterate through all nodes in the longest lineage
+        for (const lineage_node of longest_lineage) {
+            const lineage_id = lineage_node.id;
+            const lineage_color = lineage_node.color;
+            // Only store and change the color if it's not already stored
+            if (!this.selected_node_colors.hasOwnProperty(lineage_id)) {
+                this.selected_node_colors[lineage_id] = lineage_color; // Store the current color with node's id as key
+                const filtered_nodes = nodes_array.filter((node) => node.id === lineage_id);
+                filtered_nodes.forEach((node) => {
+                    node.color = "4"; // Reset the node color to its original
+                    node.render(); // Re-render the node to apply the color change
+                });
+            }
+        }
+
+        // Reset and remove nodes not in the current lineage
+        Object.keys(this.selected_node_colors).forEach((node_id) => {
+            if (!lineage_node_ids.has(node_id)) {
+                const original_color = this.selected_node_colors[node_id];
+                const filtered_nodes = nodes_array.filter((node) => node.id === node_id);
+                filtered_nodes.forEach((node) => {
+                    node.color = original_color; // Reset the node color to its original
+                    node.render(); // Re-render the node to apply the color change
+                });
+                delete this.selected_node_colors[node_id]; // Remove from tracking object
+            }
+        });
+
+        console.log(this.selected_node_colors); // Log out the stored colors
+    }
+    async unhighlight_lineage(event: any) {
+        const canvas_view = this.app.workspace.getLeavesOfType("canvas").first()?.view;
+        if (!canvas_view) {
+            return;
+        }
+        console.log("Running in unhighlight_lineage");
+        const canvas = (canvas_view as any).canvas;
+        const nodes_iterator = canvas.nodes.values();
+        const nodes_array = Array.from(nodes_iterator);
+
+        for (const node_id in this.selected_node_colors) {
+            console.log("Resetting color");
+            const filtered_nodes = nodes_array.filter((node) => node.id === node_id);
+            filtered_nodes.forEach((node) => {
+                node.color = this.selected_node_colors[node_id]; // Reset the node color to its original
+                node.render(); // Re-render the node to apply the color change
+            });
+        }
+        this.selected_node_colors = {}; // Clear the stored colors after resetting
+        console.log();
+    }
     patchCanvasMenu() {
         const canvasView = this.app.workspace.getLeavesOfType("canvas").first()?.view;
         if (!canvasView) {
             return;
         }
         const canvas = canvasView.canvas;
+        // console.log(canvas);
 
-        const menu = canvasView.canvas.menu;
+        const menu = canvas.menu;
         if (!menu) {
             console.error("No menu found on the canvas");
             return;
         }
         const that = this; // Capture the correct 'this' context.
-
         const menuUninstaller = around(menu.constructor.prototype, {
             render: (next: any) =>
                 function (...args: any) {
@@ -884,6 +934,34 @@ export default class MyPlugin extends Plugin {
                     return result;
                 },
         });
+        this.register(menuUninstaller);
+        if (!this.canvas_patched) {
+            // Define the functions to be patched
+            const functions = {
+                onDoubleClick: (next: any) =>
+                    function (event: MouseEvent) {
+                        next.call(this, event);
+                    },
+                onPointerdown: (next: any) =>
+                    function (event: MouseEvent) {
+                        const isNode = event.target.closest(".canvas-node");
+                        const canvas_color_picker_item = document.querySelector(
+                            '.clickable-icon button[aria-label="Set Color"]'
+                        );
+
+                        if (isNode) {
+                            that.highlight_lineage(event);
+                        } else {
+                            that.unhighlight_lineage(event);
+                        }
+
+                        next.call(this, event);
+                    },
+            };
+            const doubleClickPatcher = around(canvas.constructor.prototype, functions);
+            this.register(doubleClickPatcher);
+        }
+
         canvasView.scope?.register(["Mod", "Shift"], "ArrowUp", () => {
             that.create_directional_node(canvas, "top");
         });
@@ -920,48 +998,19 @@ export default class MyPlugin extends Plugin {
             that.run_graph_chat(canvas);
         });
 
-        // const canvasViewunistaller = around(canvasView.constructor.prototype, {
-        //     onOpen: (next) =>
-        //         async function () {
-        //             if (true) {
-        //                 console.log(this.scope);
-        //                 this.scope.register(["Mod"], "ArrowUp", () => {
-        //                     that.navigate(this.canvas, "top");
-        //                 });
-        //                 this.scope.register(["Mod"], "ArrowDown", () => {
-        //                     that.navigate(this.canvas, "bottom");
-        //                 });
-        //                 this.scope.register(["Mod"], "ArrowLeft", () => {
-        //                     that.navigate(this.canvas, "left");
-        //                 });
-        //                 this.scope.register(["Mod"], "ArrowRight", () => {
-        //                     that.navigate(this.canvas, "right");
-        //                 });
-        //                 this.scope.register(["Mod"], "Enter", () => {
-        //                     that.start_editing_node(this.canvas);
-        //                 });
-        //             }
-        //             this.scope.register(["Mod", "Shift"], "ArrowUp", () => {
-        //                 that.create_directional_node(this.canvas, "top");
-        //             });
-        //             this.scope.register(["Mod", "Shift"], "ArrowDown", () => {
-        //                 that.create_directional_node(this.canvas, "bottom");
-        //             });
-        //             this.scope.register(["Mod", "Shift"], "ArrowLeft", () => {
-        //                 that.create_directional_node(this.canvas, "left");
-        //             });
-        //             this.scope.register(["Mod", "Shift"], "ArrowRight", () => {
-        //                 that.create_directional_node(this.canvas, "right");
-        //             });
-        //             this.scope.register(["Mod", "Shift"], "Enter", () => {
-        //                 that.run_graph_chat(this.canvas);
-        //             });
+        if (!this.canvas_patched) {
+            // @ts-ignore
+            canvasView.leaf.rebuildView();
+            this.canvas_patched = true;
+        }
 
-        //             return next.call(this);
-        //         },
+        // this.app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
+        //     if (leaf.view.getViewType() !== "canvas") return;
+        //     const canvasView = leaf.view as CanvasView;
+        //     // @ts-ignore
+
+        //     canvasView.leaf.rebuildView();
         // });
-
-        this.register(menuUninstaller);
     }
     create_directional_node(canvas: any, direction: string) {
         const selection = canvas.selection;
@@ -1146,6 +1195,30 @@ export default class MyPlugin extends Plugin {
             canvas.selectOnly(target_node);
             canvas.zoomToSelection();
         }
+        this.highlight_lineage();
+    }
+    parseCustomXML(xmlString: string, tags: string[]) {
+        console.log("In parse custom");
+        console.log({ tags, xmlString });
+        // Function to extract content between tags
+        function getContent(tag: string, string: string) {
+            const openTag = `<${tag}>`;
+            const closeTag = `</${tag}>`;
+            const start = string.indexOf(openTag) + openTag.length;
+            const end = string.indexOf(closeTag);
+            return string.substring(start, end).trim();
+        }
+
+        // Initialize the result object
+        const result = {};
+
+        // Extract content for each tag provided
+        tags.forEach((tag) => {
+            const content = getContent(tag, xmlString);
+            result[tag] = content;
+        });
+
+        return result;
     }
     async extractTextFromPDF(file_name: string): Promise<string> {
         // pdfjs.GlobalWorkerOptions.workerSrc = "pdf.worker.js";
@@ -1200,11 +1273,9 @@ export default class MyPlugin extends Plugin {
                 const canvasView = this.app.workspace.getLeavesOfType("canvas").first()?.view;
 
                 const canvas = canvasView.canvas;
-                console.log(canvas);
                 const selection = canvas.selection;
                 const selectionIterator = selection.values();
                 const node = selectionIterator.next().value;
-                console.log(node);
                 const x = node.x + node.width + 200;
                 this.childNode(canvas, node, x, node.y, "<role>user</role>");
             });
@@ -1310,8 +1381,22 @@ export default class MyPlugin extends Plugin {
     }
 
     async get_ref_blocks_content(node: any): Promise<string> {
+        console.log("Running in ref blocks. This is the node");
+        console.log({ node });
         let rep_block_content = "";
-        const ref_blocks = node.text.match(/\[\[.*?\]\]/g) || [];
+        console.log(node.text);
+        let ref_blocks;
+        if (!node.text) {
+            return "";
+        }
+        try {
+            ref_blocks = node.text.match(/\[\[.*?\]\]/g) || [];
+        } catch (error) {
+            console.error(node);
+            console.error(node.text);
+            throw error;
+        }
+
         const inner_texts = ref_blocks.map((block: string) => block.slice(2, -2));
         const files = this.app.vault.getFiles();
 
@@ -1321,11 +1406,284 @@ export default class MyPlugin extends Plugin {
                 const text = await this.app.vault.cachedRead(foundFile);
                 rep_block_content += `Title: ${file_name}\n${text}\n\n`;
             } else {
-                console.log("File not found for:", file_name);
+                console.error("File not found for:", file_name);
             }
         }
         rep_block_content = rep_block_content.trim();
         return rep_block_content;
+    }
+
+    async sparkle(node_id: string) {
+        const canvas_view = this.app.workspace.getLeavesOfType("canvas").first()?.view;
+        if (!canvas_view) {
+            console.error("No canvas view found.");
+            return;
+        }
+        const canvas = canvas_view.canvas;
+
+        await canvas.requestSave(true);
+        const canvas_data = canvas.getData();
+        const { edges, nodes } = canvas_data;
+        const nodes_iterator = canvas.nodes.values();
+        let node = null;
+        console.log(node_id);
+        for (const node_objs of nodes_iterator) {
+            console.log(node_objs);
+            if (node_objs.id === node_id) {
+                node = node_objs;
+                break;
+            }
+        }
+        if (!node) {
+            console.error("Node not found with ID:", node_id);
+            return;
+        }
+
+        // Continue with operations on `target_node`
+        console.log("Found node:");
+        console.log(node);
+        if (node.hasOwnProperty("file")) {
+            console.log("Node has a 'file' attribute.");
+            const file_path = node.file.path;
+            const file = this.app.vault.getAbstractFileByPath(file_path);
+            if (file) {
+                console.log(file);
+                const text = await this.app.vault.cachedRead(file);
+                console.log(text);
+
+                // Check for the presence of three dashes indicating the start of the front matter
+                const front_matter_match = text.match(/^---\s*^([\s\S]*?)^---/m);
+                if (front_matter_match) {
+                    const front_matter_content = front_matter_match[1];
+                    console.log("Front matter content extracted:", front_matter_content);
+
+                    // Check for the presence of a caret prompt
+                    const caret_prompt_match = front_matter_content.match(/caret_prompt:\s*(\w+)/);
+                    let caret_prompt = "";
+                    let prompt_tags: string[] = [];
+                    if (caret_prompt_match) {
+                        caret_prompt = caret_prompt_match[1];
+
+                        // // Extract the prompts if available
+                        // const prompts_match = front_matter_content.match(
+                        //     /prompts:\s*\n\s*-\s*(.*?)\n\s*-\s*(.*?)\n\s*-\s*(.*?)(\n|$)/
+                        // );
+                        // console.log(front_matter_content);
+                        // console.log({ prompts_match });
+                        // if (prompts_match) {
+                        //     console.log(prompts_match);
+                        //     prompt_tags = [prompts_match[1], prompts_match[2], prompts_match[3]].map((s) => s.trim());
+                        //     console.log("Prompts extracted:", prompt_tags);
+                        // }
+                        // Split the front matter content into lines
+                        const lines = front_matter_content.split("\n");
+                        console.log(lines);
+
+                        // Find the index of the line that contains 'prompts'
+                        const promptsIndex = lines.findIndex((line) => line.trim().startsWith("prompts:"));
+
+                        // Check if 'prompts' was found
+                        if (promptsIndex !== -1) {
+                            // Collect all subsequent lines that start with a dash '-' indicating list items
+                            for (let i = promptsIndex + 1; i < lines.length; i++) {
+                                const line = lines[i].trim();
+                                if (line.startsWith("-")) {
+                                    prompt_tags.push(line.substring(1).trim()); // Remove the dash and trim whitespace
+                                } else {
+                                    break; // Stop if we reach a line that doesn't start with a dash
+                                }
+                            }
+                            console.log("Prompts extracted:", prompt_tags);
+                        }
+                    }
+                    if (caret_prompt === "multiprompt") {
+                        const prompts = this.parseCustomXML(text, prompt_tags);
+                        const prompts_keys = Object.keys(prompts);
+                        const total_prompts = prompts_keys.length;
+                        const card_height = node.height;
+                        const middle_index = Math.floor(total_prompts / 2);
+                        const highest_y = node.y - middle_index * (100 + card_height); // Calculate the highest y based on the middle index
+                        const sparklePromises = [];
+                        for (let i = 0; i < prompts_keys.length; i++) {
+                            const prompt = prompts[prompts_keys[i]];
+                            console.log({ prompt });
+                            let x = node.x + node.width + 200;
+                            let y = highest_y + i * (100 + card_height); // Increment y for each prompt to distribute them vertically including card height
+                            const new_node_content = `<role>user</role>\n${prompt}`;
+                            const node_output = await this.childNode(
+                                canvas,
+                                node,
+                                x,
+                                y,
+                                new_node_content,
+                                "right",
+                                "left",
+                                "groq"
+                            );
+                            sparklePromises.push(this.sparkle(node_output.id));
+                        }
+                        await Promise.all(sparklePromises);
+                    }
+                    return;
+                }
+            } else {
+                console.error("File not found or is not a readable file:", file_path);
+            }
+        }
+        console.log("Running just a normal node?? This print 3 times");
+
+        // const ancestors = this.get_ancestors(nodes, edges, node.id);
+        // const all_ancestors = this.getAllAncestorNodes(nodes, edges, node.id);
+        const longest_lineage = this.getLongestLineage(nodes, edges, node.id);
+
+        const ancestors_with_context = this.getDirectAncestorsWithContext(nodes, edges, node.id);
+        // TODO - This needs to be cleaned up. Not sure what's going on with this
+        // I would think it shoudl be plural. But it;'s only checking one node?
+        const ref_blocks = await this.get_ref_blocks_content(node);
+        let added_context = ``;
+        for (let i = 0; i < ancestors_with_context.length; i++) {
+            const node = ancestors_with_context[i];
+            added_context += node.text + "\n";
+        }
+        if (ref_blocks.length > 1) {
+            added_context += `\n ${ref_blocks}`;
+        }
+        added_context = added_context.trim();
+        let conversation = [];
+
+        for (let i = 0; i < longest_lineage.length; i++) {
+            const node = longest_lineage[i];
+            let text = "";
+            if (node.type === "text") {
+                text = node.text;
+            } else if (node.type === "file" && node.file.includes(".pdf")) {
+                const file_name = node.file;
+                // const files = await this.app.vault.getFiles();
+                // const foundFile = files.find((file) => file.basename === file_name);
+                text = await this.extractTextFromPDF(file_name);
+                added_context += text;
+                const role = "assistant";
+                const message = {
+                    role,
+                    content: text,
+                };
+                conversation.push(message);
+                continue;
+            }
+
+            const userRegex = /<role>User<\/role>/i;
+            const assistantRegex = /<role>assistant<\/role>/i;
+
+            if (userRegex.test(text)) {
+                const split_text = text.split(userRegex);
+                const role = "user";
+                let content = split_text[1].trim();
+                // Only for the first node
+                if (added_context.length > 1 && i === 0) {
+                    content += `\n${added_context}`;
+                }
+                const message = {
+                    role,
+                    content,
+                };
+                conversation.push(message);
+            }
+            if (assistantRegex.test(text)) {
+                const split_text = text.split(assistantRegex);
+                const role = "assistant";
+                const content = split_text[1].trim();
+                const message = {
+                    role,
+                    content,
+                };
+                conversation.push(message);
+            }
+        }
+        conversation.reverse();
+
+        const data = {
+            conversation,
+        };
+        const total_conversation_length = conversation.reduce((total, message) => {
+            return total + message.content.split(/\s+/).filter(Boolean).length;
+        }, 0);
+        console.log(`Total word count in conversation: ${total_conversation_length}`);
+        let model_choice = "groq";
+        // TODO - Refactor this out
+        if (total_conversation_length > 10000) {
+            model_choice = "openai-gpt-4";
+        }
+        let node_content = "";
+        if (model_choice === "local") {
+            // This is for local
+            try {
+                const response = await fetch("http://localhost:8000/conversation", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(data),
+                });
+                const output = await response.json();
+                if (output) {
+                    node_content = `<role>assistant</role>\n${output.response}`;
+                    // const x = node.x + node.width + 200;
+                    // this.childNode(canvas, node, x, node.y, content);
+                }
+            } catch (error) {
+                console.error("Error:", error);
+            }
+        }
+
+        if (model_choice === "groq") {
+            const model = "llama3-70b-8192";
+
+            const params = {
+                messages: conversation,
+                model: model,
+                // tools: tools,
+                // tool_choice: tool_choice,
+                max_tokens: 12000,
+                stop: null,
+            };
+            // @ts-ignore
+            new Notice("Calling Groq!");
+            groq.chat.completions
+                .create(params)
+                .then((chat_completion) => {
+                    new Notice("Message back from Groq!");
+                    const content = chat_completion.choices[0].message.content;
+                    const node_content = `<role>assistant</role>\n${content}`;
+                    const x = node.x + node.width + 200;
+                    this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
+                })
+                .catch((error) => {
+                    console.error("Error fetching chat completion from Groq:", error);
+                });
+        }
+        if (model_choice === "openai-gpt-4") {
+            const model = "gpt-4-1106-preview";
+            const params = {
+                messages: conversation,
+                model: model,
+            };
+            // @ts-ignore
+            new Notice("Calling GPT-4!");
+            openai.chat.completions
+                .create(params)
+                .then((chat_completion) => {
+                    new Notice("Message back from GPT-4!");
+                    const content = chat_completion.choices[0].message.content;
+                    const node_content = `<role>assistant</role>\n${content}`;
+                    const x = node.x + node.width + 200;
+                    this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
+                })
+                .catch((error) => {
+                    console.error("Error fetching chat completion:", error);
+                });
+        }
+        // const x = node.x + node.width + 200;
+        // this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
     }
 
     addAIButtonIfNeeded(menuEl: HTMLElement) {
@@ -1337,155 +1695,12 @@ export default class MyPlugin extends Plugin {
                 const canvasView = this.app.workspace.getLeavesOfType("canvas").first()?.view;
                 const canvas = canvasView.canvas;
                 await canvas.requestSave(true);
+                console.log(canvas);
                 const selection = canvas.selection;
                 const selectionIterator = selection.values();
                 const node = selectionIterator.next().value;
-
-                // const file_name = "Attention is All Your Need";
-                // const files = await this.app.vault.getFiles();
-                // const foundFile = files.find((file) => file.basename === file_name);
-                // const pdf_text = await this.extractTextFromPDF(foundFile);
-                // await node.blur();
-                // await node.blur();
-                const canvas_data = canvas.getData();
-                const { edges, nodes } = canvas_data;
-                console.log(canvas_data);
-
-                // const ancestors = this.get_ancestors(nodes, edges, node.id);
-                // const all_ancestors = this.getAllAncestorNodes(nodes, edges, node.id);
-                const longest_lineage = this.getLongestLineage(nodes, edges, node.id);
-
-                const ancestors_with_context = this.getDirectAncestorsWithContext(nodes, edges, node.id);
-                const ref_blocks = await this.get_ref_blocks_content(node);
-                let added_context = ``;
-                for (let i = 0; i < ancestors_with_context.length; i++) {
-                    const node = ancestors_with_context[i];
-                    added_context += node.text + "\n";
-                }
-                if (ref_blocks.length > 1) {
-                    added_context += `\n ${ref_blocks}`;
-                }
-                added_context = added_context.trim();
-                let conversation = [];
-                console.log("Here");
-                for (let i = 0; i < longest_lineage.length; i++) {
-                    const node = longest_lineage[i];
-                    let text = "";
-                    console.log(node);
-                    if (node.type === "text") {
-                        text = node.text;
-                    } else if (node.type === "file" && node.file.includes(".pdf")) {
-                        const file_name = node.file;
-                        // const files = await this.app.vault.getFiles();
-                        // const foundFile = files.find((file) => file.basename === file_name);
-                        text = await this.extractTextFromPDF(file_name);
-                        console.log("Got text");
-                        console.log(text);
-                        added_context += text;
-                        const role = "assistant";
-                        const message = {
-                            role,
-                            content: text,
-                        };
-                        conversation.push(message);
-                        continue;
-                    }
-
-                    const userRegex = /<role>User<\/role>/i;
-                    const assistantRegex = /<role>assistant<\/role>/i;
-
-                    if (userRegex.test(text)) {
-                        const split_text = text.split(userRegex);
-                        const role = "user";
-                        let content = split_text[1].trim();
-                        // Only for the first node
-                        if (added_context.length > 1 && i === 0) {
-                            content += `\n${added_context}`;
-                        }
-                        const message = {
-                            role,
-                            content,
-                        };
-                        conversation.push(message);
-                    }
-                    if (assistantRegex.test(text)) {
-                        const split_text = text.split(assistantRegex);
-                        const role = "assistant";
-                        const content = split_text[1].trim();
-                        const message = {
-                            role,
-                            content,
-                        };
-                        conversation.push(message);
-                    }
-                }
-                conversation.reverse();
-                console.log({ conversation });
-
-                const data = {
-                    conversation,
-                };
-                let model_choice = "openai-gpt-4";
-                let node_content = "";
-                if (model_choice === "local") {
-                    // This is for local
-                    try {
-                        const response = await fetch("http://localhost:8000/conversation", {
-                            method: "POST",
-                            headers: {
-                                "Content-Type": "application/json",
-                            },
-                            body: JSON.stringify(data),
-                        });
-                        const output = await response.json();
-                        console.log(output);
-                        if (output) {
-                            node_content = `<role>assistant</role>\n${output.response}`;
-                            // const x = node.x + node.width + 200;
-                            // this.childNode(canvas, node, x, node.y, content);
-                        }
-                    } catch (error) {
-                        console.error("Error:", error);
-                    }
-                }
-
-                if (model_choice === "groq") {
-                    const model = "llama3-70b-8192";
-
-                    const params = {
-                        messages: conversation,
-                        model: model,
-                        // tools: tools,
-                        // tool_choice: tool_choice,
-                        max_tokens: 12000,
-                        stop: null,
-                    };
-
-                    // @ts-ignore
-                    new Notice("Calling Groq!");
-                    const chat_completion: OpenAI.Chat.ChatCompletion = await groq.chat.completions.create(params);
-                    new Notice("Message back from Groq");
-
-                    const content = chat_completion.choices[0].message.content;
-                    node_content = `<role>assistant</role>\n${content}`;
-                }
-
-                if (model_choice === "openai-gpt-4") {
-                    const model = "gpt-4-1106-preview";
-                    const params = {
-                        messages: conversation,
-                        model: model,
-                    };
-                    // @ts-ignore
-                    new Notice("Calling GPT-4!");
-                    const chat_completion: OpenAI.Chat.ChatCompletion = await openai.chat.completions.create(params);
-                    new Notice("Message back from GPT-4!");
-                    // const chat_completion: OpenAI.Chat.ChatCompletion = await groq.chat.completions.create(params);
-                    const content = chat_completion.choices[0].message.content;
-                    node_content = `<role>assistant</role>\n${content}`;
-                }
-                const x = node.x + node.width + 200;
-                this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
+                const node_id = node.id;
+                await this.sparkle(node_id);
             });
             menuEl.appendChild(buttonEl);
         }
