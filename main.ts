@@ -583,10 +583,9 @@ export default class CaretPlugin extends Plugin {
             name: "Log",
             callback: async () => {
                 const currentLeaf = this.app.workspace.activeLeaf;
-                console.log(this.settings);
                 const path = "caret/chats";
                 const folder = this.app.vault.getFolderByPath(path);
-                console.log({ folder });
+                console.log(this);
 
                 if (currentLeaf?.view.getViewType() === "canvas") {
                     const canvasView = currentLeaf.view;
@@ -1631,7 +1630,7 @@ export default class CaretPlugin extends Plugin {
             }
         } else if (provider == "openai") {
             if (!this.openai_client) {
-                const error_message = "API Key not configured for OpenAI";
+                const error_message = "API Key not configured for OpenAI. Restart the app if you just added it!";
                 new Notice(error_message);
                 throw new Error(error_message);
             }
@@ -1653,7 +1652,7 @@ export default class CaretPlugin extends Plugin {
             }
         } else if (provider == "groq") {
             if (!this.groq_client) {
-                const error_message = "API Key not configured for Groq";
+                const error_message = "API Key not configured for Groq.  Restart the app if you just added it!";
                 new Notice(error_message);
                 throw new Error(error_message);
             }
@@ -1931,6 +1930,12 @@ class CaretSettingTab extends PluginSettingTab {
             console.error("Error retrieving model details:", error);
             context_window = null;
         }
+        if (!this.plugin.settings.llm_provider || this.plugin.settings.llm_provider.length === 0) {
+            this.plugin.settings.llm_provider = "openai";
+            this.plugin.settings.model = "gpt-4-turbo";
+            this.plugin.settings.context_window = 128000;
+            this.plugin.saveSettings();
+        }
 
         const model_options_data = Object.fromEntries(
             Object.entries(
@@ -2041,6 +2046,12 @@ class CaretSettingTab extends PluginSettingTab {
                     });
                 text.inputEl.addClass("hidden-value-unsecure");
             });
+        new Setting(containerEl)
+            .setName("Reload after adding API Keys!")
+            .setDesc(
+                "After you added API keys for the first time you will need to reload the plugin for those changes to take effect. \n This only needs to be done the first time or when you change your keys."
+            );
+
         new Setting(containerEl)
             .setName("Save Settings")
             .setDesc("Settings save automatically. But you can also click this to be extra sure they saved.")
