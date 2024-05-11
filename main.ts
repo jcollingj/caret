@@ -1,4 +1,5 @@
-var parseString = require("xml2js").parseString;
+import { getEncoding, encodingForModel } from "js-tiktoken";
+
 import ollama from "ollama/browser";
 import pdfjs from "@bundled-es-modules/pdfjs-dist/build/pdf";
 import OpenAI from "openai";
@@ -23,15 +24,7 @@ import {
 import { CanvasData, CanvasFileData, CanvasNodeData, CanvasTextData } from "obsidian/canvas";
 import { Extension, RangeSetBuilder, StateField, Transaction } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView } from "@codemirror/view";
-import * as dotenv from "dotenv";
-import { messages } from "@prisma/client";
-// dotenv.config({ debug: true}
-
-const basePath = "/Users/jacobcolling/Documents/accelerate/accelerate/";
-
-dotenv.config({
-    path: `${basePath}/.obsidian/plugins/caret/.env`,
-});
+var parseString = require("xml2js").parseString;
 
 type Message = {
     content: string;
@@ -244,6 +237,7 @@ interface CaretPluginSettings {
     llm_provider: string;
     openai_api_key: string;
     groq_api_key: string;
+    context_window: number;
 }
 
 const DEFAULT_SETTINGS: CaretPluginSettings = {
@@ -369,15 +363,16 @@ export const VIEW_NAME_MAIN_CHAT = "main-caret";
 class FullPageChat extends ItemView {
     chat_id: string;
     plugin: any;
+    conversation_title: string;
+    textBox: HTMLTextAreaElement;
+    messagesContainer: HTMLElement; // Container for messages
+    conversation: Message[]; // List to store conversation messages
     constructor(plugin: any, leaf: WorkspaceLeaf, chat_id?: string, conversation: Message[] = []) {
         super(leaf);
         this.plugin = plugin;
         this.chat_id = chat_id || this.generateRandomID(5);
         this.conversation = conversation; // Initialize conversation list with default or passed value
     }
-    textBox: HTMLTextAreaElement;
-    messagesContainer: HTMLElement; // Container for messages
-    conversation: Message[]; // List to store conversation messages
 
     getViewType() {
         return VIEW_NAME_MAIN_CHAT;
@@ -456,16 +451,54 @@ class FullPageChat extends ItemView {
     }
 
     async submitMessage(userMessage: string) {
-        this.addMessage(userMessage, "user"); // Display the user message immediately
+        const user_message_tokens = this.plugin.encoder.encode(userMessage).length;
+        if (user_message_tokens > this.plugin.settings.context_window) {
+            new Notice(
+                `Single message exceeds model context window. Can't submit. Please shorten message and try again`
+            );
+            return;
+        }
 
+        this.addMessage(userMessage, "user");
+        let total_context_length = 0;
+        let valid_conversation = [];
+
+        for (let i = this.conversation.length - 1; i >= 0; i--) {
+            const message = this.conversation[i];
+            const encoded_message = this.plugin.encoder.encode(message.content);
+            const message_length = encoded_message.length;
+            if (total_context_length + message_length > this.plugin.context_window) {
+                break;
+            }
+            total_context_length += message_length;
+            valid_conversation.push(message);
+        }
         const response = await this.plugin.llm_call(
             this.plugin.settings.llm_provider,
             this.plugin.settings.model,
-            this.conversation
+            valid_conversation
         );
         console.log(response);
         const content = response.content;
         this.addMessage(content, "assistant"); // Display the response
+    }
+    async escapeXml(unsafe: string): string {
+        return unsafe.replace(/[<>&'"]/g, (c) => {
+            switch (c) {
+                case "<":
+                    return "&lt;";
+                case ">":
+                    return "&gt;";
+                case "&":
+                    return "&amp;";
+                case "'":
+                    return "&apos;";
+                case '"':
+                    return "&quot;";
+                default:
+                    return c;
+            }
+        });
     }
     async saveChat() {
         console.log("Running in save");
@@ -485,16 +518,18 @@ class FullPageChat extends ItemView {
 		`;
 
         let messages = ``;
-
-        this.conversation.forEach((message) => {
+        for (let i = 0; i < this.conversation.length; i++) {
+            const message = this.conversation[i];
+            const escaped_content = await this.escapeXml(message.content);
+            const escaped_role = await this.escapeXml(message.role);
             const message_xml = `
-			<message>
-				<role>${message.role}</role>
-				<content>${message.content}</content>
-			</message>
-			`.trim();
+                <message>
+                    <role>${escaped_role}</role>
+                    <content>${escaped_content}</content>
+                </message>
+            `.trim();
             messages += message_xml;
-        });
+        }
         let conversation = `<conversation>\n${messages}</conversation></root>\`\`\``;
         file_content += conversation;
         const file = await this.app.vault.getFileByPath(file_path);
@@ -531,20 +566,19 @@ export default class CaretPlugin extends Plugin {
     color_picker_open_on_last_click: boolean = false;
     openai_client: OpenAI;
     groq_client: Groq;
+    encoder: any;
 
     async onload() {
+        this.encoder = encodingForModel("gpt-4-0125-preview");
         await this.loadSettings();
-        // Initialze the clients if available
-        console.log(this.settings);
         if (this.settings.openai_api_key) {
-            console.log("Does this initialize?");
             this.openai_client = new OpenAI({ apiKey: this.settings.openai_api_key, dangerouslyAllowBrowser: true });
         }
         if (this.settings.groq_api_key) {
             this.groq_client = new Groq({ apiKey: this.settings.groq_api_key, dangerouslyAllowBrowser: true });
         }
 
-        this.addSettingTab(new SampleSettingTab(this.app, this));
+        this.addSettingTab(new CaretSettingTab(this.app, this));
         this.addCommand({
             id: "patch-menu",
             name: "Patch Menu",
@@ -556,11 +590,14 @@ export default class CaretPlugin extends Plugin {
         const that = this;
 
         this.registerEvent(
-            this.app.workspace.on("active-leaf-change", () => {
+            this.app.workspace.on("active-leaf-change", (event) => {
+                console.log({ event });
                 const currentLeaf = this.app.workspace.activeLeaf;
+                this.unhighlight_lineage();
 
                 if (currentLeaf?.view.getViewType() === "canvas") {
                     const canvas = currentLeaf.view;
+                    // this.canvas_patched = false;
 
                     this.patchCanvasMenu();
                 }
@@ -779,25 +816,20 @@ export default class CaretPlugin extends Plugin {
                     let content = editor.getValue();
                     content = content.replace("```xml", "").trim();
                     content = content.replace("```", "").trim();
-
-                    console.log(content);
                     const xml_object = await this.parseXml(content);
+                    console.log(content);
                     console.log(xml_object);
-                    console.log(xml_object.root);
-                    console.log(xml_object.root.metadata);
-                    console.log(xml_object.root.metadata[0]);
                     const convo_id = xml_object.root.metadata[0].id[0];
                     const messages_from_xml = xml_object.root.conversation[0].message;
                     const messages: Message[] = [];
-                    for (let i = 0; i < messages_from_xml.length; i++) {
-                        console.log(messages_from_xml[i].role);
-                        const role = messages_from_xml[i].role[0];
-                        const content = messages_from_xml[i].content[0];
-                        messages.push({ role, content });
+                    if (messages_from_xml) {
+                        for (let i = 0; i < messages_from_xml.length; i++) {
+                            console.log(messages_from_xml[i].role);
+                            const role = messages_from_xml[i].role[0];
+                            const content = messages_from_xml[i].content[0];
+                            messages.push({ role, content });
+                        }
                     }
-
-                    console.log(messages);
-
                     if (convo_id && messages) {
                         const leaf = this.app.workspace.getLeaf(true);
                         const chatView = new FullPageChat(this, leaf, convo_id, messages);
@@ -846,8 +878,8 @@ export default class CaretPlugin extends Plugin {
         await new Promise((resolve) => setTimeout(resolve, 200)); // Sleep for 200 milliseconds
         console.log("Running highlight lineage");
 
-        const canvas_view = this.app.workspace.getLeavesOfType("canvas").first()?.view;
-        if (!canvas_view) {
+        const canvas_view = this.app.workspace.getMostRecentLeaf().view;
+        if (!canvas_view.canvas) {
             return;
         }
         const canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
@@ -897,9 +929,9 @@ export default class CaretPlugin extends Plugin {
 
         console.log(this.selected_node_colors); // Log out the stored colors
     }
-    async unhighlight_lineage(event: any) {
-        const canvas_view = this.app.workspace.getLeavesOfType("canvas").first()?.view;
-        if (!canvas_view) {
+    async unhighlight_lineage() {
+        const canvas_view = this.app.workspace.getMostRecentLeaf().view;
+        if (!canvas_view.canvas) {
             return;
         }
         console.log("Running in unhighlight_lineage");
@@ -919,7 +951,12 @@ export default class CaretPlugin extends Plugin {
         console.log();
     }
     patchCanvasMenu() {
-        const canvasView = this.app.workspace.getLeavesOfType("canvas").first()?.view;
+        // const canvasView = this.app.workspace.getLeavesOfType("canvas").first()?.view;
+        // const canvasView = this.app.workspace.getLeavesOfType("canvas").first()?.view;
+        const canvasView = this.app.workspace.getMostRecentLeaf().view;
+        if (!canvasView.canvas) {
+            return;
+        }
         if (!canvasView) {
             return;
         }
@@ -943,32 +980,32 @@ export default class CaretPlugin extends Plugin {
                 },
         });
         this.register(menuUninstaller);
-        if (!this.canvas_patched) {
-            // Define the functions to be patched
-            const functions = {
-                onDoubleClick: (next: any) =>
-                    function (event: MouseEvent) {
-                        next.call(this, event);
-                    },
-                onPointerdown: (next: any) =>
-                    function (event: MouseEvent) {
-                        const isNode = event.target.closest(".canvas-node");
-                        const canvas_color_picker_item = document.querySelector(
-                            '.clickable-icon button[aria-label="Set Color"]'
-                        );
+        // if (!this.canvas_patched) {
+        // Define the functions to be patched
+        const functions = {
+            onDoubleClick: (next: any) =>
+                function (event: MouseEvent) {
+                    next.call(this, event);
+                },
+            onPointerdown: (next: any) =>
+                function (event: MouseEvent) {
+                    const isNode = event.target.closest(".canvas-node");
+                    const canvas_color_picker_item = document.querySelector(
+                        '.clickable-icon button[aria-label="Set Color"]'
+                    );
 
-                        if (isNode) {
-                            that.highlight_lineage(event);
-                        } else {
-                            that.unhighlight_lineage(event);
-                        }
+                    if (isNode) {
+                        that.highlight_lineage();
+                    } else {
+                        that.unhighlight_lineage();
+                    }
 
-                        next.call(this, event);
-                    },
-            };
-            const doubleClickPatcher = around(canvas.constructor.prototype, functions);
-            this.register(doubleClickPatcher);
-        }
+                    next.call(this, event);
+                },
+        };
+        const doubleClickPatcher = around(canvas.constructor.prototype, functions);
+        this.register(doubleClickPatcher);
+        // }
 
         canvasView.scope?.register(["Mod", "Shift"], "ArrowUp", () => {
             that.create_directional_node(canvas, "top");
@@ -1294,8 +1331,13 @@ export default class CaretPlugin extends Plugin {
             graphButtonEl.addEventListener("click", () => {
                 // Assuming canvasView is accessible here, or you need to pass it similarly
                 const canvasView = this.app.workspace.getLeavesOfType("canvas").first()?.view;
+                const view = this.app.workspace.getMostRecentLeaf().view;
+                console.log({ view });
+                if (!view.canvas) {
+                    return;
+                }
 
-                const canvas = canvasView.canvas;
+                const canvas = view.canvas;
                 const selection = canvas.selection;
                 const selectionIterator = selection.values();
                 const node = selectionIterator.next().value;
@@ -1410,7 +1452,7 @@ export default class CaretPlugin extends Plugin {
                 }
             }
         }
-        console.log("Returning here");
+        console.log("Direct ancestors contezxt");
         console.log(direct_ancentors_context);
 
         return direct_ancentors_context;
@@ -1450,9 +1492,9 @@ export default class CaretPlugin extends Plugin {
     }
 
     async sparkle(node_id: string) {
-        const canvas_view = this.app.workspace.getLeavesOfType("canvas").first()?.view;
-        if (!canvas_view) {
-            console.error("No canvas view found.");
+        const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
+
+        if (!canvas_view || !canvas_view.canvas) {
             return;
         }
         const canvas = canvas_view.canvas;
@@ -1495,19 +1537,6 @@ export default class CaretPlugin extends Plugin {
                     let prompt_tags: string[] = [];
                     if (caret_prompt_match) {
                         caret_prompt = caret_prompt_match[1];
-
-                        // // Extract the prompts if available
-                        // const prompts_match = front_matter_content.match(
-                        //     /prompts:\s*\n\s*-\s*(.*?)\n\s*-\s*(.*?)\n\s*-\s*(.*?)(\n|$)/
-                        // );
-                        // console.log(front_matter_content);
-                        // console.log({ prompts_match });
-                        // if (prompts_match) {
-                        //     console.log(prompts_match);
-                        //     prompt_tags = [prompts_match[1], prompts_match[2], prompts_match[3]].map((s) => s.trim());
-                        //     console.log("Prompts extracted:", prompt_tags);
-                        // }
-                        // Split the front matter content into lines
                         const lines = front_matter_content.split("\n");
                         console.log(lines);
 
@@ -1580,6 +1609,8 @@ export default class CaretPlugin extends Plugin {
         }
         added_context += "\n" + ancestors_with_context;
         added_context = added_context.trim();
+        let convo_total_tokens = this.encoder.encode(added_context);
+        console.log({ convo_total_tokens });
         let conversation = [];
 
         for (let i = 0; i < longest_lineage.length; i++) {
@@ -1592,6 +1623,12 @@ export default class CaretPlugin extends Plugin {
                 // const files = await this.app.vault.getFiles();
                 // const foundFile = files.find((file) => file.basename === file_name);
                 text = await this.extractTextFromPDF(file_name);
+                const pdf_tokens = this.encoder.encode(text);
+                if (pdf_tokens + convo_total_tokens > this.settings.context_window) {
+                    new Notice("Context window exceeded while reading a PDF. Excluding node");
+                    break;
+                }
+                convo_total_tokens += pdf_tokens;
                 added_context += text;
                 const role = "assistant";
                 const message = {
@@ -1613,6 +1650,13 @@ export default class CaretPlugin extends Plugin {
                 if (added_context.length > 1 && i === 0) {
                     content += `\n${added_context}`;
                 }
+                console.log(content);
+                const user_message_tokens = this.encoder.encode(content).length;
+                if (user_message_tokens + convo_total_tokens > this.settings.context_window) {
+                    new Notice("Exceeding context window while adding user message. Trimming content");
+                    break;
+                }
+                console.log({ user_message_tokens });
                 const message = {
                     role,
                     content,
@@ -1631,89 +1675,19 @@ export default class CaretPlugin extends Plugin {
             }
         }
         conversation.reverse();
+        console.log({ conversation });
+
+        // return;
+
         const message = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
         const content = message.content;
         const node_content = `<role>assistant</role>\n${content}`;
         const x = node.x + node.width + 200;
         this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
-
-        // let node_content = "";
-        // if (model_choice === "local") {
-        //     // This is for local
-        //     try {
-        //         const response = await fetch("http://localhost:8000/conversation", {
-        //             method: "POST",
-        //             headers: {
-        //                 "Content-Type": "application/json",
-        //             },
-        //             body: JSON.stringify(data),
-        //         });
-        //         const output = await response.json();
-        //         if (output) {
-        //             node_content = `<role>assistant</role>\n${output.response}`;
-        //             // const x = node.x + node.width + 200;
-        //             // this.childNode(canvas, node, x, node.y, content);
-        //         }
-        //     } catch (error) {
-        //         console.error("Error:", error);
-        //     }
-        // }
-
-        // if (model_choice === "groq") {
-        //     const model = "llama3-70b-8192";
-
-        //     const params = {
-        //         messages: conversation,
-        //         model: model,
-        //         // tools: tools,
-        //         // tool_choice: tool_choice,
-        //         max_tokens: 12000,
-        //         stop: null,
-        //     };
-        //     // @ts-ignore
-        //     new Notice("Calling Groq!");
-        //     groq.chat.completions
-        //         .create(params)
-        //         .then((chat_completion) => {
-        //             new Notice("Message back from Groq!");
-
-        //         })
-        //         .catch((error) => {
-        //             console.error("Error fetching chat completion from Groq:", error);
-        //         });
-        // }
-        // if (model_choice === "openai-gpt-4") {
-        //     const model = "gpt-4-1106-preview";
-        //     const params = {
-        //         messages: conversation,
-        //         model: model,
-        //     };
-        //     // @ts-ignore
-        //     new Notice("Calling GPT-4!");
-        //     this.openai_client.chat.completions
-        //         .create(params)
-        //         .then((chat_completion) => {
-        //             new Notice("Message back from GPT-4!");
-        //             const content = chat_completion.choices[0].message.content;
-        //             const node_content = `<role>assistant</role>\n${content}`;
-        //             const x = node.x + node.width + 200;
-        //             this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
-        //         })
-        //         .catch((error) => {
-        //             console.error("Error fetching chat completion:", error);
-        //         });
-        // }
-        // const x = node.x + node.width + 200;
-        // this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
     }
 
     async llm_call(provider: string, model: string, conversation: any[]): Promise<Message> {
-        console.log("Running in LLM Call");
-        console.log({ provider, model, conversation });
-
         if (provider === "ollama") {
-            // Only one model here right now.
-            console.log({ conversation });
             let model_param = model;
             new Notice("Calling ollama");
             try {
@@ -1788,10 +1762,15 @@ export default class CaretPlugin extends Plugin {
             setTooltip(buttonEl, "Sparkle", { placement: "top" });
             setIcon(buttonEl, "lucide-sparkles");
             buttonEl.addEventListener("click", async () => {
-                const canvasView = this.app.workspace.getLeavesOfType("canvas").first()?.view;
+                const canvasView = this.app.workspace.getMostRecentLeaf().view;
+                console.log({ canvasView });
+                if (!canvasView.canvas) {
+                    return;
+                }
                 const canvas = canvasView.canvas;
                 await canvas.requestSave(true);
-                console.log(canvas);
+                console.log(canvas.getData());
+                console.log("Canvas data");
                 const selection = canvas.selection;
                 const selectionIterator = selection.values();
                 const node = selectionIterator.next().value;
@@ -1963,25 +1942,10 @@ export default class CaretPlugin extends Plugin {
     addChatIconToRibbon() {
         console.log("Add side bar runs");
         this.addRibbonIcon("message-square", "Caret Chat", async (evt) => {
-            let main_chat_found = false;
-            this.app.workspace.iterateAllLeaves((leaf) => {
-                if (leaf.view.getViewType() === VIEW_NAME_MAIN_CHAT) {
-                    main_chat_found = true;
-                    // If the view is not the active view, bring it into focus
-                    // @ts-ignore
-                    if (!leaf.view.containerEl.parentElement.classList.contains("is-active")) {
-                        this.app.workspace.revealLeaf(leaf);
-                    }
-                }
+            await this.app.workspace.getLeaf(true).setViewState({
+                type: VIEW_NAME_MAIN_CHAT,
+                active: true,
             });
-
-            // If the view was not found, create it in the right sidebar
-            if (!main_chat_found) {
-                await this.app.workspace.getLeaf(true).setViewState({
-                    type: VIEW_NAME_MAIN_CHAT,
-                    active: true,
-                });
-            }
         });
     }
 
@@ -1998,7 +1962,7 @@ export default class CaretPlugin extends Plugin {
     }
 }
 
-class SampleSettingTab extends PluginSettingTab {
+class CaretSettingTab extends PluginSettingTab {
     plugin: CaretPlugin;
 
     constructor(app: App, plugin: CaretPlugin) {
@@ -2011,19 +1975,45 @@ class SampleSettingTab extends PluginSettingTab {
 
         containerEl.empty();
         const llm_provider_options = {
-            openai: { "gpt-4-turbo": "gpt-4-turbo", "gpt-3.5-turbo": "gpt-3.5-turbo" },
-            groq: {
-                "llama3-8b-8192": "Llama 8B",
-                "llama3-70b-8192": "Llama 70B",
-                "mixtral-8x7b-32768": "Mixtral 8x7b",
-                "gemma-7b-it": "Gemma 7B",
+            openai: {
+                "gpt-4-turbo": { name: "gpt-4-turbo", context_window: 128000 },
+                "gpt-3.5-turbo": { name: "gpt-3.5-turbo", context_window: 128000 },
             },
-            ollama: { llama3: "llama3 8B", phi3: "Phi-3 3.8B", mistral: "Mistral 7B", gemma: "Gemma 7B" },
+            groq: {
+                "llama3-8b-8192": { name: "Llama 8B", context_window: 8192 },
+                "llama3-70b-8192": { name: "Llama 70B", context_window: 8192 },
+                "mixtral-8x7b-32768": { name: "Mixtral 8x7b", context_window: 32768 },
+                "gemma-7b-it": { name: "Gemma 7B", context_window: 8192 },
+            },
+            ollama: {
+                llama3: { name: "llama3 8B", context_window: 8192 },
+                phi3: { name: "Phi-3 3.8B", context_window: 8192 },
+                mistral: { name: "Mistral 7B", context_window: 32768 },
+                gemma: { name: "Gemma 7B", context_window: 8192 },
+            },
         };
-        console.log("rendering display here");
-        console.log(this.plugin.settings);
-        const model_options_data = llm_provider_options[this.plugin.settings.llm_provider];
-        console.log(model_options_data);
+
+        let context_window = null;
+        try {
+            const llm_provider = this.plugin.settings.llm_provider;
+            const model = this.plugin.settings.model;
+            if (llm_provider_options[llm_provider] && llm_provider_options[llm_provider][model]) {
+                const model_details = llm_provider_options[llm_provider][model];
+                if (model_details && model_details.context_window) {
+                    const context_window_value = model_details.context_window;
+                    context_window = parseInt(context_window_value).toLocaleString();
+                }
+            }
+        } catch (error) {
+            console.error("Error retrieving model details:", error);
+            context_window = null;
+        }
+
+        const model_options_data = Object.fromEntries(
+            Object.entries(
+                llm_provider_options[this.plugin.settings.llm_provider as keyof typeof llm_provider_options]
+            ).map(([key, value]) => [key, value.name])
+        );
 
         // LLM Provider Settings
         new Setting(containerEl)
@@ -2041,6 +2031,8 @@ class SampleSettingTab extends PluginSettingTab {
                         console.log("On change this executes?");
                         this.plugin.settings.llm_provider = provider;
                         this.plugin.settings.model = Object.keys(llm_provider_options[provider])[0];
+                        this.plugin.settings.context_window =
+                            llm_provider_options[provider][this.plugin.settings.model].context_window;
                         await this.plugin.saveSettings();
                         await this.plugin.loadSettings();
                         console.log(this.plugin.settings);
@@ -2048,20 +2040,27 @@ class SampleSettingTab extends PluginSettingTab {
                         this.display();
                     });
             });
-        new Setting(containerEl)
-            .setName("Model")
-            .setDesc("")
-            .addDropdown((modelDropdown) => {
-                modelDropdown.addOptions(model_options_data);
-                modelDropdown.setValue(this.plugin.settings.model);
-                modelDropdown.onChange(async (value) => {
-                    this.plugin.settings.model = value;
-                    await this.plugin.saveSettings();
-                    await this.plugin.loadSettings();
-                    console.log(this.plugin.settings);
-                    this.display();
-                });
+        const setting = new Setting(containerEl).setName("Model").addDropdown((modelDropdown) => {
+            modelDropdown.addOptions(model_options_data);
+            modelDropdown.setValue(this.plugin.settings.model);
+            modelDropdown.onChange(async (value) => {
+                this.plugin.settings.model = value;
+                console.log(value);
+                console.log({ value });
+                console.log(this.plugin.settings.llm_provider);
+                this.plugin.settings.context_window =
+                    llm_provider_options[this.plugin.settings.llm_provider][value].context_window;
+                await this.plugin.saveSettings();
+                await this.plugin.loadSettings();
+                console.log("SEtetings here");
+                console.log(this.plugin.settings);
+                this.display();
             });
+        });
+
+        if (context_window) {
+            setting.setDesc(`FYI your selected model has a context window of ${context_window}`);
+        }
         if (this.plugin.settings.llm_provider === "ollama") {
             const ollama_info_container = containerEl.createEl("div", {
                 cls: "settings_container",
