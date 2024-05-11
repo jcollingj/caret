@@ -6,7 +6,7 @@ import pdfjs from "@bundled-es-modules/pdfjs-dist/build/pdf";
 import OpenAI from "openai";
 import Groq from "groq-sdk";
 import { around } from "monkey-around";
-import { Canvas, ViewportNode, Message, Node, Edge } from "./types";
+import { Canvas, ViewportNode, Message, Node, Edge, EdgeDirection } from "./types";
 import {
     App,
     Editor,
@@ -20,9 +20,8 @@ import {
     WorkspaceLeaf,
     setTooltip,
     setIcon,
-    View,
 } from "obsidian";
-import { CanvasData, CanvasFileData, CanvasNodeData, CanvasTextData } from "obsidian/canvas";
+import { CanvasFileData, CanvasNodeData, CanvasTextData } from "obsidian/canvas";
 import { Extension, RangeSetBuilder, StateField, Transaction } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView } from "@codemirror/view";
 var parseString = require("xml2js").parseString;
@@ -1777,7 +1776,6 @@ export default class CaretPlugin extends Plugin {
                 break;
             case "file":
                 node.file = content;
-                if (subpath) node.subpath = subpath;
                 break;
         }
 
@@ -1806,7 +1804,6 @@ export default class CaretPlugin extends Plugin {
             }
         );
     };
-    // TODO - Change this
     random = (e: number) => {
         let t = [];
         for (let n = 0; n < e; n++) {
@@ -1814,7 +1811,7 @@ export default class CaretPlugin extends Plugin {
         }
         return t.join("");
     };
-    addEdge = (canvas: any, edgeID: string, fromEdge: edgeT, toEdge: edgeT) => {
+    addEdge = (canvas: any, edgeID: string, fromEdge: EdgeDirection, toEdge: EdgeDirection) => {
         if (!canvas) return;
 
         const data = canvas.getData();
@@ -1837,33 +1834,33 @@ export default class CaretPlugin extends Plugin {
         canvas.requestFrame();
     };
 
-    // Method to insert text into the sidebar
-    insertTextIntoSidebar(text: string) {
-        const trimmed_text = text.trim();
-        this.app.workspace.iterateAllLeaves((leaf) => {
-            if (leaf.view.getViewType() === VIEW_NAME_SIDEBAR_CHAT) {
-                const view = leaf.view as SidebarChat;
-                if (view.textBox) {
-                    view.textBox.value += trimmed_text;
-                }
-            }
-        });
-    }
+    // // Method to insert text into the sidebar
+    // insertTextIntoSidebar(text: string) {
+    //     const trimmed_text = text.trim();
+    //     this.app.workspace.iterateAllLeaves((leaf) => {
+    //         if (leaf.view.getViewType() === VIEW_NAME_SIDEBAR_CHAT) {
+    //             const view = leaf.view as SidebarChat;
+    //             if (view.textBox) {
+    //                 view.textBox.value += trimmed_text;
+    //             }
+    //         }
+    //     });
+    // }
 
-    // Method to clear text from the sidebar
-    clearTextInSidebar() {
-        this.app.workspace.iterateAllLeaves((leaf) => {
-            if (leaf.view.getViewType() === VIEW_NAME_SIDEBAR_CHAT) {
-                const view = leaf.view as SidebarChat;
-                if (view.textBox) {
-                    view.textBox.value = ""; // Clear the text box
-                }
-                if (view.messagesContainer) {
-                    view.messagesContainer.innerHTML = ""; // Clear the messages container
-                }
-            }
-        });
-    }
+    // // Method to clear text from the sidebar
+    // clearTextInSidebar() {
+    //     this.app.workspace.iterateAllLeaves((leaf) => {
+    //         if (leaf.view.getViewType() === VIEW_NAME_SIDEBAR_CHAT) {
+    //             const view = leaf.view as SidebarChat;
+    //             if (view.textBox) {
+    //                 view.textBox.value = ""; // Clear the text box
+    //             }
+    //             if (view.messagesContainer) {
+    //                 view.messagesContainer.innerHTML = ""; // Clear the messages container
+    //             }
+    //         }
+    //     });
+    // }
     addChatIconToRibbon() {
         console.log("Add side bar runs");
         this.addRibbonIcon("message-square", "Caret Chat", async (evt) => {

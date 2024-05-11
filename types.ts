@@ -68,6 +68,8 @@ export interface Canvas {
     requestSave(save?: boolean, triggerBySelf?: boolean): void;
     zoomToSelection(): void;
     selectOnly(node: Node): void;
+    importData({}): void;
+    requestFrame(): void;
 }
 
 export interface CanvasMenu {
