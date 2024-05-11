@@ -1,11 +1,12 @@
-import { getEncoding, encodingForModel } from "js-tiktoken";
-
+import { encodingForModel } from "js-tiktoken";
+// @ts-ignore
 import ollama from "ollama/browser";
+// @ts-ignore
 import pdfjs from "@bundled-es-modules/pdfjs-dist/build/pdf";
 import OpenAI from "openai";
 import Groq from "groq-sdk";
 import { around } from "monkey-around";
-import { Canvas, ViewportNode } from "./types";
+import { Canvas, ViewportNode, Message, Node, Edge } from "./types";
 import {
     App,
     Editor,
@@ -26,46 +27,19 @@ import { Extension, RangeSetBuilder, StateField, Transaction } from "@codemirror
 import { Decoration, DecorationSet, EditorView } from "@codemirror/view";
 var parseString = require("xml2js").parseString;
 
-type Message = {
-    content: string;
-    role: string;
-};
-
-// Start of node and edge functions
-interface edgeT {
-    fromOrTo: string;
-    side: string;
-    node: CanvasNodeData;
-}
-
-interface Node {
-    id: string;
-    type: string;
-    text: string;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-}
-
-interface Edge {
-    id: string;
-    fromNode: string;
-    fromSide: string;
-    toNode: string;
-    toSide: string;
-}
 export class CMDJModal extends Modal {
     result: string;
     selectedText: string;
     startIndex: number;
     endIndex: number;
+    plugin: any;
 
-    constructor(app: App, selectedText: string, startIndex: number, endIndex: number) {
+    constructor(app: App, selectedText: string, startIndex: number, endIndex: number, plugin: any) {
         super(app);
         this.selectedText = selectedText;
         this.startIndex = startIndex;
         this.endIndex = endIndex;
+        this.plugin = plugin;
     }
 
     onOpen() {
@@ -122,7 +96,7 @@ export class CMDJModal extends Modal {
     }
 
     async submit_edit(result: string) {
-        let message = `
+        let content = `
 Please apply the following instructions to the below content:
 
 Instructions:
@@ -139,17 +113,13 @@ Always apply markdown formatting. For keywords use the following:
 	todos - Prepend todo lines with:
 	- [ ] 
 `.trim();
-
-        const data = { message };
-        const resp = await fetch("http://localhost:8000/single-turn", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(data),
-        });
-        const output = await resp.json();
-        return output.content;
+        const conversation = [{ role: "user", content: content }];
+        const message = await this.plugin.llm_call(
+            this.plugin.settings.llm_provider,
+            this.plugin.settings.model,
+            conversation
+        );
+        return message.content;
     }
 
     insert_response(response: string, replace: boolean = false) {
@@ -482,7 +452,7 @@ class FullPageChat extends ItemView {
         const content = response.content;
         this.addMessage(content, "assistant"); // Display the response
     }
-    async escapeXml(unsafe: string): string {
+    escapeXml(unsafe: string): string {
         return unsafe.replace(/[<>&'"]/g, (c) => {
             switch (c) {
                 case "<":
@@ -520,11 +490,10 @@ class FullPageChat extends ItemView {
         let messages = ``;
         for (let i = 0; i < this.conversation.length; i++) {
             const message = this.conversation[i];
-            const escaped_content = await this.escapeXml(message.content);
-            const escaped_role = await this.escapeXml(message.role);
+            const escaped_content = this.escapeXml(message.content);
             const message_xml = `
                 <message>
-                    <role>${escaped_role}</role>
+                    <role>${message.role}</role>
                     <content>${escaped_content}</content>
                 </message>
             `.trim();
@@ -732,7 +701,7 @@ export default class CaretPlugin extends Plugin {
                     const content = activeView.editor.getValue();
                     const startIndex = content.indexOf(selectedText);
                     const endIndex = startIndex + selectedText.length;
-                    new CMDJModal(this.app, selectedText, startIndex, endIndex).open();
+                    new CMDJModal(this.app, selectedText, startIndex, endIndex, this).open();
                 } else {
                     new Notice("No active markdown editor or no text selected.");
                 }
@@ -743,70 +712,31 @@ export default class CaretPlugin extends Plugin {
         // this.registerView(VIEW_NAME_SIDEBAR_CHAT, (leaf) => new SidebarChat(leaf));
         this.registerView(VIEW_NAME_MAIN_CHAT, (leaf) => new FullPageChat(this, leaf));
         // Define a command to insert text into the sidebar
-        this.addCommand({
-            id: "insert-text-into-sidebar",
-            name: "Insert Text into Sidebar",
-            hotkeys: [{ modifiers: ["Mod"], key: "l" }],
-            callback: () => {
-                const activeLeaf = this.app.workspace.activeLeaf;
-                if (activeLeaf) {
-                    const editor = activeLeaf.view instanceof MarkdownView ? activeLeaf.view.editor : null;
-                    if (editor) {
-                        const selectedText = editor.getSelection();
-                        this.insertTextIntoSidebar(selectedText);
-                    }
-                }
-            },
-        });
+        // this.addCommand({
+        //     id: "insert-text-into-sidebar",
+        //     name: "Insert Text into Sidebar",
+        //     hotkeys: [{ modifiers: ["Mod"], key: "l" }],
+        //     callback: () => {
+        //         const activeLeaf = this.app.workspace.activeLeaf;
+        //         if (activeLeaf) {
+        //             const editor = activeLeaf.view instanceof MarkdownView ? activeLeaf.view.editor : null;
+        //             if (editor) {
+        //                 const selectedText = editor.getSelection();
+        //                 this.insertTextIntoSidebar(selectedText);
+        //             }
+        //         }
+        //     },
+        // });
 
-        // Define a command to clear text from the sidebar
-        this.addCommand({
-            id: "clear-text-in-sidebar",
-            name: "Clear Text in Sidebar",
-            hotkeys: [{ modifiers: ["Mod"], key: ";" }],
-            callback: () => {
-                this.clearTextInSidebar();
-            },
-        });
-
-        async function one_shot(message: string) {
-            let model = "openai-gpt-4";
-            if (model === "local") {
-                const data = { message };
-                const resp = await fetch("http://localhost:8000/single-turn", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify(data),
-                });
-                const output = await resp.json();
-                return output.content;
-            }
-            console.log(message);
-            if (model === "openai-gpt-4") {
-                const user_message = {
-                    role: "user",
-                    content: message,
-                };
-                const model = "gpt-4-1106-preview";
-                const params = {
-                    messages: [user_message],
-                    model: model,
-                };
-                // @ts-ignore
-                new Notice("Calling GPT-4!");
-                const chat_completion: OpenAI.Chat.ChatCompletion = await this.openai_client.chat.completions.create(
-                    params
-                );
-                new Notice("Message back from GPT-4!");
-                // const chat_completion: OpenAI.Chat.ChatCompletion = await groq.chat.completions.create(params);
-                const content = chat_completion.choices[0].message.content;
-                return content;
-                // node_content = `<role>assistant</role>\n${content}`;
-            }
-        }
-
+        // // Define a command to clear text from the sidebar
+        // this.addCommand({
+        //     id: "clear-text-in-sidebar",
+        //     name: "Clear Text in Sidebar",
+        //     hotkeys: [{ modifiers: ["Mod"], key: ";" }],
+        //     callback: () => {
+        //         this.clearTextInSidebar();
+        //     },
+        // });
         this.addCommand({
             id: "open-chat",
             name: "Open Chat",
@@ -878,8 +808,9 @@ export default class CaretPlugin extends Plugin {
         await new Promise((resolve) => setTimeout(resolve, 200)); // Sleep for 200 milliseconds
         console.log("Running highlight lineage");
 
-        const canvas_view = this.app.workspace.getMostRecentLeaf().view;
-        if (!canvas_view.canvas) {
+        const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
+        // @ts-ignore
+        if (!canvas_view?.canvas) {
             return;
         }
         const canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
@@ -906,8 +837,8 @@ export default class CaretPlugin extends Plugin {
             // Only store and change the color if it's not already stored
             if (!this.selected_node_colors.hasOwnProperty(lineage_id)) {
                 this.selected_node_colors[lineage_id] = lineage_color; // Store the current color with node's id as key
-                const filtered_nodes = nodes_array.filter((node) => node.id === lineage_id);
-                filtered_nodes.forEach((node) => {
+                const filtered_nodes = nodes_array.filter((node: Node) => node.id === lineage_id);
+                filtered_nodes.forEach((node: Node) => {
                     node.color = "4"; // Reset the node color to its original
                     node.render(); // Re-render the node to apply the color change
                 });
@@ -918,8 +849,8 @@ export default class CaretPlugin extends Plugin {
         Object.keys(this.selected_node_colors).forEach((node_id) => {
             if (!lineage_node_ids.has(node_id)) {
                 const original_color = this.selected_node_colors[node_id];
-                const filtered_nodes = nodes_array.filter((node) => node.id === node_id);
-                filtered_nodes.forEach((node) => {
+                const filtered_nodes = nodes_array.filter((node: Node) => node.id === node_id);
+                filtered_nodes.forEach((node: Node) => {
                     node.color = original_color; // Reset the node color to its original
                     node.render(); // Re-render the node to apply the color change
                 });
@@ -930,8 +861,9 @@ export default class CaretPlugin extends Plugin {
         console.log(this.selected_node_colors); // Log out the stored colors
     }
     async unhighlight_lineage() {
-        const canvas_view = this.app.workspace.getMostRecentLeaf().view;
-        if (!canvas_view.canvas) {
+        const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
+        // @ts-ignore
+        if (!canvas_view?.canvas) {
             return;
         }
         console.log("Running in unhighlight_lineage");
@@ -941,8 +873,8 @@ export default class CaretPlugin extends Plugin {
 
         for (const node_id in this.selected_node_colors) {
             console.log("Resetting color");
-            const filtered_nodes = nodes_array.filter((node) => node.id === node_id);
-            filtered_nodes.forEach((node) => {
+            const filtered_nodes = nodes_array.filter((node: Node) => node.id === node_id);
+            filtered_nodes.forEach((node: Node) => {
                 node.color = this.selected_node_colors[node_id]; // Reset the node color to its original
                 node.render(); // Re-render the node to apply the color change
             });
@@ -951,15 +883,15 @@ export default class CaretPlugin extends Plugin {
         console.log();
     }
     patchCanvasMenu() {
-        // const canvasView = this.app.workspace.getLeavesOfType("canvas").first()?.view;
-        // const canvasView = this.app.workspace.getLeavesOfType("canvas").first()?.view;
-        const canvasView = this.app.workspace.getMostRecentLeaf().view;
-        if (!canvasView.canvas) {
+        const canvasView = this.app.workspace.getMostRecentLeaf()?.view;
+        // @ts-ignore
+        if (!canvasView?.canvas) {
             return;
         }
         if (!canvasView) {
             return;
         }
+        // @ts-ignore
         const canvas = canvasView.canvas;
         // console.log(canvas);
 
@@ -973,8 +905,8 @@ export default class CaretPlugin extends Plugin {
             render: (next: any) =>
                 function (...args: any) {
                     const result = next.call(this, ...args);
-                    that.addGraphButtonIfNeeded(this.menuEl);
-                    that.addAIButtonIfNeeded(this.menuEl);
+                    that.add_new_node_button(this.menuEl);
+                    that.add_sparkle_button(this.menuEl);
 
                     return result;
                 },
@@ -989,13 +921,18 @@ export default class CaretPlugin extends Plugin {
                 },
             onPointerdown: (next: any) =>
                 function (event: MouseEvent) {
-                    const isNode = event.target.closest(".canvas-node");
-                    const canvas_color_picker_item = document.querySelector(
-                        '.clickable-icon button[aria-label="Set Color"]'
-                    );
+                    if (event.target) {
+                        // @ts-ignore
+                        const isNode = event.target.closest(".canvas-node");
+                        const canvas_color_picker_item = document.querySelector(
+                            '.clickable-icon button[aria-label="Set Color"]'
+                        );
 
-                    if (isNode) {
-                        that.highlight_lineage();
+                        if (isNode) {
+                            that.highlight_lineage();
+                        } else {
+                            that.unhighlight_lineage();
+                        }
                     } else {
                         that.unhighlight_lineage();
                     }
@@ -1005,7 +942,6 @@ export default class CaretPlugin extends Plugin {
         };
         const doubleClickPatcher = around(canvas.constructor.prototype, functions);
         this.register(doubleClickPatcher);
-        // }
 
         canvasView.scope?.register(["Mod", "Shift"], "ArrowUp", () => {
             that.create_directional_node(canvas, "top");
@@ -1048,14 +984,6 @@ export default class CaretPlugin extends Plugin {
             canvasView.leaf.rebuildView();
             this.canvas_patched = true;
         }
-
-        // this.app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
-        //     if (leaf.view.getViewType() !== "canvas") return;
-        //     const canvasView = leaf.view as CanvasView;
-        //     // @ts-ignore
-
-        //     canvasView.leaf.rebuildView();
-        // });
     }
     create_directional_node(canvas: any, direction: string) {
         const selection = canvas.selection;
@@ -1109,13 +1037,13 @@ export default class CaretPlugin extends Plugin {
 
         this.childNode(canvas, node, x, y, "<role>user</role>", from_side, to_side);
     }
-    start_editing_node(canvas) {
+    start_editing_node(canvas: Canvas) {
         const selection = canvas.selection;
         const selectionIterator = selection.values();
         const node = selectionIterator.next().value;
         const node_id = node.id;
         node.isEditing = true;
-        const editButton = document.querySelector('.canvas-menu button[aria-label="Edit"]');
+        const editButton = document.querySelector('.canvas-menu button[aria-label="Edit"]') as HTMLElement;
         if (editButton) {
             editButton.click(); // Simulate the click on the edit button
         } else {
@@ -1138,7 +1066,7 @@ export default class CaretPlugin extends Plugin {
             console.error("Edit button not found");
         }
     }
-    navigate(canvas, direction: string) {
+    navigate(canvas: Canvas, direction: string) {
         // const canvas = canvasView.canvas;
         const selection = canvas.selection;
         const selectionIterator = selection.values();
@@ -1160,11 +1088,13 @@ export default class CaretPlugin extends Plugin {
         switch (direction) {
             case "right":
                 // Handle both 'from' and 'to' cases for 'right'
-                const edgeRightFrom = edges.find((edge) => edge.fromNode === node_id && edge.fromSide === "right");
+                const edgeRightFrom = edges.find(
+                    (edge: Edge) => edge.fromNode === node_id && edge.fromSide === "right"
+                );
                 if (edgeRightFrom) {
                     targetNodeID = edgeRightFrom.toNode;
                 } else {
-                    const edgeRightTo = edges.find((edge) => edge.toNode === node_id && edge.toSide === "right");
+                    const edgeRightTo = edges.find((edge: Edge) => edge.toNode === node_id && edge.toSide === "right");
                     if (edgeRightTo) {
                         targetNodeID = edgeRightTo.fromNode;
                     }
@@ -1172,11 +1102,11 @@ export default class CaretPlugin extends Plugin {
                 break;
             case "left":
                 // Handle both 'from' and 'to' cases for 'left'
-                const edgeLeftFrom = edges.find((edge) => edge.fromNode === node_id && edge.fromSide === "left");
+                const edgeLeftFrom = edges.find((edge: Edge) => edge.fromNode === node_id && edge.fromSide === "left");
                 if (edgeLeftFrom) {
                     targetNodeID = edgeLeftFrom.toNode;
                 } else {
-                    const edgeLeftTo = edges.find((edge) => edge.toNode === node_id && edge.toSide === "left");
+                    const edgeLeftTo = edges.find((edge: Edge) => edge.toNode === node_id && edge.toSide === "left");
                     if (edgeLeftTo) {
                         targetNodeID = edgeLeftTo.fromNode;
                     }
@@ -1184,11 +1114,11 @@ export default class CaretPlugin extends Plugin {
                 break;
             case "top":
                 // Handle both 'from' and 'to' cases for 'top'
-                const edgeTopFrom = edges.find((edge) => edge.fromNode === node_id && edge.fromSide === "top");
+                const edgeTopFrom = edges.find((edge: Edge) => edge.fromNode === node_id && edge.fromSide === "top");
                 if (edgeTopFrom) {
                     targetNodeID = edgeTopFrom.toNode;
                 } else {
-                    const edgeTopTo = edges.find((edge) => edge.toNode === node_id && edge.toSide === "top");
+                    const edgeTopTo = edges.find((edge: Edge) => edge.toNode === node_id && edge.toSide === "top");
                     if (edgeTopTo) {
                         targetNodeID = edgeTopTo.fromNode;
                     }
@@ -1196,11 +1126,15 @@ export default class CaretPlugin extends Plugin {
                 break;
             case "bottom":
                 // Handle both 'from' and 'to' cases for 'bottom'
-                const edgeBottomFrom = edges.find((edge) => edge.fromNode === node_id && edge.fromSide === "bottom");
+                const edgeBottomFrom = edges.find(
+                    (edge: Edge) => edge.fromNode === node_id && edge.fromSide === "bottom"
+                );
                 if (edgeBottomFrom) {
                     targetNodeID = edgeBottomFrom.toNode;
                 } else {
-                    const edgeBottomTo = edges.find((edge) => edge.toNode === node_id && edge.toSide === "bottom");
+                    const edgeBottomTo = edges.find(
+                        (edge: Edge) => edge.toNode === node_id && edge.toSide === "bottom"
+                    );
                     if (edgeBottomTo) {
                         targetNodeID = edgeBottomTo.fromNode;
                     }
@@ -1270,10 +1204,10 @@ export default class CaretPlugin extends Plugin {
         }
 
         // Initialize the result object
-        const result = {};
+        const result: any = {};
 
         // Extract content for each tag provided
-        tags.forEach((tag) => {
+        tags.forEach((tag: string) => {
             const content = getContent(tag, xmlString);
             result[tag] = content;
         });
@@ -1283,13 +1217,14 @@ export default class CaretPlugin extends Plugin {
     async extractTextFromPDF(file_name: string): Promise<string> {
         // pdfjs.GlobalWorkerOptions.workerSrc = "pdf.worker.js";
         // Assuming this code is inside a method of your plugin class
-
+        // TODO - Clean this up later
+        // @ts-ignore
         pdfjs.GlobalWorkerOptions.workerSrc = await this.app.vault.getResourcePath({
             path: ".obsidian/plugins/caret/pdf.worker.js",
         });
-        // const file_path = `/Users/jacobcolling/Documents/accelerate/accelerate/Attention is All Your Need.pdf`;
-        // const document = await getDocument(file_path);
-        // console.log(document);
+
+        // TODO - Clean this up later
+        // @ts-ignore
         const file_path = await this.app.vault.getResourcePath({
             path: file_name,
         });
@@ -1323,7 +1258,7 @@ export default class CaretPlugin extends Plugin {
         const fullDocumentText = await loadAndExtractText(file_path);
         return fullDocumentText;
     }
-    addGraphButtonIfNeeded(menuEl: HTMLElement) {
+    add_new_node_button(menuEl: HTMLElement) {
         if (!menuEl.querySelector(".graph-menu-item")) {
             const graphButtonEl = createEl("button", "clickable-icon graph-menu-item");
             setTooltip(graphButtonEl, "Create Node", { placement: "top" });
@@ -1331,12 +1266,12 @@ export default class CaretPlugin extends Plugin {
             graphButtonEl.addEventListener("click", () => {
                 // Assuming canvasView is accessible here, or you need to pass it similarly
                 const canvasView = this.app.workspace.getLeavesOfType("canvas").first()?.view;
-                const view = this.app.workspace.getMostRecentLeaf().view;
-                console.log({ view });
-                if (!view.canvas) {
+                const view = this.app.workspace.getMostRecentLeaf()?.view;
+                // @ts-ignore
+                if (!view?.canvas) {
                     return;
                 }
-
+                // @ts-ignore
                 const canvas = view.canvas;
                 const selection = canvas.selection;
                 const selectionIterator = selection.values();
@@ -1440,8 +1375,7 @@ export default class CaretPlugin extends Plugin {
             const ancestor = nodes.find((node) => node.id === edge.fromNode);
             if (ancestor && ancestor.type === "text" && ancestor.text.includes("<context>")) {
                 direct_ancentors_context += ancestor.text + "\n";
-            } else if (ancestor && ancestor.type === "file" && ancestor.file.includes(".md")) {
-                console.log("Does this file?");
+            } else if (ancestor && ancestor.type === "file" && ancestor.file && ancestor.file.includes(".md")) {
                 const file_path = ancestor.file;
                 const file = this.app.vault.getFileByPath(file_path);
                 if (file) {
@@ -1452,17 +1386,11 @@ export default class CaretPlugin extends Plugin {
                 }
             }
         }
-        console.log("Direct ancestors contezxt");
-        console.log(direct_ancentors_context);
-
         return direct_ancentors_context;
     }
 
     async get_ref_blocks_content(node: any): Promise<string> {
-        console.log("Running in ref blocks. This is the node");
-        console.log({ node });
         let rep_block_content = "";
-        console.log(node.text);
         let ref_blocks;
         if (!node.text) {
             return "";
@@ -1493,10 +1421,11 @@ export default class CaretPlugin extends Plugin {
 
     async sparkle(node_id: string) {
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
-
+        // @ts-ignore
         if (!canvas_view || !canvas_view.canvas) {
             return;
         }
+        // @ts-ignore
         const canvas = canvas_view.canvas;
 
         await canvas.requestSave(true);
@@ -1517,13 +1446,10 @@ export default class CaretPlugin extends Plugin {
 
         // Continue with operations on `target_node`
         if (node.hasOwnProperty("file")) {
-            console.log("Node has a 'file' attribute.");
             const file_path = node.file.path;
             const file = this.app.vault.getAbstractFileByPath(file_path);
             if (file) {
-                console.log(file);
                 const text = await this.app.vault.cachedRead(file);
-                console.log(text);
 
                 // Check for the presence of three dashes indicating the start of the front matter
                 const front_matter_match = text.match(/^---\s*^([\s\S]*?)^---/m);
@@ -1554,7 +1480,6 @@ export default class CaretPlugin extends Plugin {
                                     break; // Stop if we reach a line that doesn't start with a dash
                                 }
                             }
-                            console.log("Prompts extracted:", prompt_tags);
                         }
                     }
                     if (caret_prompt === "multiprompt") {
@@ -1756,17 +1681,19 @@ export default class CaretPlugin extends Plugin {
         }
     }
 
-    addAIButtonIfNeeded(menuEl: HTMLElement) {
-        if (!menuEl.querySelector(".gpt-menu-item")) {
-            const buttonEl = createEl("button", "clickable-icon gpt-menu-item");
+    add_sparkle_button(menuEl: HTMLElement) {
+        if (!menuEl.querySelector(".spark_button")) {
+            const buttonEl = createEl("button", "clickable-icon spark_button");
             setTooltip(buttonEl, "Sparkle", { placement: "top" });
             setIcon(buttonEl, "lucide-sparkles");
             buttonEl.addEventListener("click", async () => {
                 const canvasView = this.app.workspace.getMostRecentLeaf().view;
                 console.log({ canvasView });
+                // @ts-ignore
                 if (!canvasView.canvas) {
                     return;
                 }
+                // @ts-ignore
                 const canvas = canvasView.canvas;
                 await canvas.requestSave(true);
                 console.log(canvas.getData());
@@ -1821,7 +1748,6 @@ export default class CaretPlugin extends Plugin {
             height,
             type,
             content,
-            subpath,
         }: {
             x: number;
             y: number;
@@ -1829,7 +1755,6 @@ export default class CaretPlugin extends Plugin {
             height: number;
             type: "text" | "file";
             content: string;
-            subpath?: string;
         }
     ) => {
         if (!canvas) return;
@@ -1856,7 +1781,7 @@ export default class CaretPlugin extends Plugin {
                 break;
         }
 
-        canvas.importData(<CanvasData>{
+        canvas.importData({
             nodes: [...data.nodes, node],
             edges: data.edges,
         });
