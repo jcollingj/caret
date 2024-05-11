@@ -214,6 +214,7 @@ const DEFAULT_SETTINGS: CaretPluginSettings = {
     llm_provider: "",
     openai_api_key: "",
     groq_api_key: "",
+    context_window: 0,
 };
 
 // export const VIEW_NAME_SIDEBAR_CHAT = "sidebar-caret";
