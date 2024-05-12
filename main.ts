@@ -1,3 +1,4 @@
+import Fuse from "fuse.js";
 import { encodingForModel } from "js-tiktoken";
 // @ts-ignore
 import ollama from "ollama/browser";
@@ -199,7 +200,119 @@ export const redBackgroundField = StateField.define<DecorationSet>({
         return EditorView.decorations.from(field);
     },
 });
-// Remember to rename these classes and interfaces!
+
+export class InsertNoteModal extends Modal {
+    plugin: any;
+    current_view: any;
+
+    constructor(app: App, plugin: any, view: any) {
+        super(app);
+        this.plugin = plugin;
+        this.current_view = view;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        const all_files = this.app.vault.getFiles();
+        console.log(all_files);
+
+        const html_insert_files = contentEl.createEl("p", {
+            text: "Insert File",
+            cls: "insert-file-header",
+        });
+
+        // Create a text input for filtering files
+        const inputField = contentEl.createEl("input", {
+            type: "text",
+            placeholder: "Enter text to search files",
+            cls: "file-filter-input",
+        });
+
+        // Function to filter files based on input text and limit to 10 results
+        const filter_files = (input_text) => {
+            const fuse_options = {
+                keys: ["name"],
+                includeScore: true,
+                threshold: 0.3,
+            };
+            const fuse = new Fuse(all_files, fuse_options);
+            const results = fuse.search(input_text);
+            return results.map((result) => result.item).slice(0, 10);
+        };
+
+        // Display the filtered files
+        const filesDisplay = contentEl.createEl("div", { cls: "insert-file-files-display" });
+
+        let currentSelectedIndex = -1; // -1 means the input field is selected
+
+        // Function to update the visual selection
+        const updateSelection = () => {
+            const fileElements = filesDisplay.querySelectorAll(".insert-file-file-name");
+            fileElements.forEach((el, index) => {
+                if (index === currentSelectedIndex) {
+                    el.classList.add("selected");
+                    el.scrollIntoView({ block: "nearest" });
+                } else {
+                    el.classList.remove("selected");
+                }
+            });
+        };
+
+        // Update display when input changes
+        inputField.addEventListener("input", () => {
+            const filtered_files = filter_files(inputField.value);
+            console.log(filtered_files);
+
+            // Clear previous file display
+            filesDisplay.innerHTML = "";
+
+            // Add filtered files to the display
+            filtered_files.forEach((file) => {
+                const fileElement = filesDisplay.createEl("div", { text: file.name, cls: "insert-file-file-name" });
+                fileElement.addEventListener("click", () => {
+                    console.log(`File selected: ${file.name}`);
+                    console.log(this.current_view);
+                    if (this.current_view.getViewType() === "main-caret") {
+                        console.log("Inserting into user message");
+                        this.current_view.insert_text_into_user_message(`[[${file.name}]]`);
+                        this.current_view.focusAndPositionCursorInTextBox();
+                        this.close();
+                    }
+                });
+            });
+
+            // Reset selection
+            currentSelectedIndex = -1;
+            updateSelection();
+        });
+
+        // Keyboard navigation
+        inputField.addEventListener("keydown", (event) => {
+            const fileElements = filesDisplay.querySelectorAll(".insert-file-file-name");
+            if (event.key === "ArrowDown") {
+                if (currentSelectedIndex < fileElements.length - 1) {
+                    currentSelectedIndex++;
+                    updateSelection();
+                    event.preventDefault(); // Prevent scrolling the page
+                }
+            } else if (event.key === "ArrowUp") {
+                if (currentSelectedIndex > -1) {
+                    currentSelectedIndex--;
+                    updateSelection();
+                    event.preventDefault(); // Prevent scrolling the page
+                }
+            } else if (event.key === "Enter" && currentSelectedIndex >= 0) {
+                event.preventDefault(); // Prevent adding an extra line break
+                fileElements[currentSelectedIndex].click();
+            }
+        });
+    }
+
+    onClose() {
+        let { contentEl } = this;
+        contentEl.empty();
+    }
+}
 
 interface CaretPluginSettings {
     model: string;
@@ -378,6 +491,14 @@ class FullPageChat extends ItemView {
             cls: "full_width_text_container",
         });
         this.textBox.placeholder = "Type something...";
+        this.textBox.addEventListener("keydown", (event) => {
+            if (event.key === "@") {
+                event.preventDefault(); // Prevent the default action
+                this.textBox.value += "@"; // Add the '@' sign to the textBox value
+                console.log("The '@' key was pressed.");
+                new InsertNoteModal(this.app, this.plugin, this).open(); // Open the modal
+            }
+        });
 
         // Create a separate container for buttons within the input container
         const buttonContainer = inputContainer.createEl("div", {
@@ -385,11 +506,20 @@ class FullPageChat extends ItemView {
         });
 
         // Create the submit button within the button container
-        const submitButton = buttonContainer.createEl("button");
+        const submitButton = buttonContainer.createEl("button", {});
         submitButton.textContent = "Submit";
-        submitButton.addEventListener("click", () => {
+        const submitAction = () => {
             this.submitMessage(this.textBox.value);
             this.textBox.value = ""; // Clear the text box after sending
+        };
+
+        submitButton.addEventListener("click", submitAction);
+
+        this.textBox.addEventListener("keydown", (event) => {
+            if (event.shiftKey && event.key === "Enter") {
+                event.preventDefault(); // Prevent the default action of a newline
+                submitAction();
+            }
         });
     }
 
@@ -399,6 +529,21 @@ class FullPageChat extends ItemView {
         // Re-render the conversation in the HTML
         this.renderConversation();
     }
+    async streamMessage(stream_response) {
+        if (this.plugin.settings.llm_provider === "ollama") {
+            for await (const part of stream_response) {
+                this.conversation[this.conversation.length - 1].content += part.message.content;
+                this.renderConversation();
+            }
+        }
+        if (this.plugin.settings.llm_provider === "openai" || "groq") {
+            for await (const part of stream_response) {
+                const delta_content = part.choices[0]?.delta.content || "";
+                this.conversation[this.conversation.length - 1].content += delta_content;
+                this.renderConversation();
+            }
+        }
+    }
 
     renderConversation() {
         // Clear the current messages
@@ -406,10 +551,7 @@ class FullPageChat extends ItemView {
 
         // Add each message in the conversation to the messages container
         this.conversation.forEach((message) => {
-            console.log({ message });
-            console.log(message.role);
             const display_class = `message ${message.role}`;
-            console.log({ display_class });
             const messageDiv = this.messagesContainer.createEl("div", {
                 cls: display_class,
             });
@@ -433,24 +575,47 @@ class FullPageChat extends ItemView {
         let total_context_length = 0;
         let valid_conversation = [];
 
-        for (let i = this.conversation.length - 1; i >= 0; i--) {
-            const message = this.conversation[i];
-            const encoded_message = this.plugin.encoder.encode(message.content);
+        for (let i = 0; i < this.conversation.length; i++) {
+            let message = this.conversation[i];
+            let modified_content = message.content;
+            console.log(`Message ${i.toString()} -${message.content} `);
+
+            // Check for text in double brackets and log the match
+            const bracket_regex = /\[\[(.*?)\]\]/g;
+            const match = bracket_regex.exec(modified_content);
+            if (match) {
+                const file_path = match[1];
+                const file = await this.app.vault.getFileByPath(file_path);
+                if (file) {
+                    const file_content = await this.app.vault.cachedRead(file);
+                    modified_content += file_content; // Update modified_content instead of message.content
+                } else {
+                    new Notice(`File not found: ${file_path}`);
+                }
+            }
+
+            const encoded_message = this.plugin.encoder.encode(modified_content);
             const message_length = encoded_message.length;
             if (total_context_length + message_length > this.plugin.context_window) {
                 break;
             }
             total_context_length += message_length;
-            valid_conversation.push(message);
+            valid_conversation.push({ ...message, content: modified_content }); // Push modified content in a hidden way
         }
-        const response = await this.plugin.llm_call(
+        console.log({ valid_conversation });
+        const response = await this.plugin.llm_call_streaming(
             this.plugin.settings.llm_provider,
             this.plugin.settings.model,
             valid_conversation
         );
-        console.log(response);
-        const content = response.content;
-        this.addMessage(content, "assistant"); // Display the response
+        this.addMessage("", "assistant"); // Display the response
+        this.streamMessage(response);
+    }
+    focusAndPositionCursorInTextBox() {
+        this.textBox.focus();
+    }
+    insert_text_into_user_message(text: string) {
+        this.textBox.value += text.trim() + " ";
     }
     escapeXml(unsafe: string): string {
         return unsafe.replace(/[<>&'"]/g, (c) => {
@@ -471,11 +636,8 @@ class FullPageChat extends ItemView {
         });
     }
     async saveChat() {
-        console.log("Running in save");
         const chat_folder_path = "caret/chats";
-        console.log(chat_folder_path);
         const chat_folder = this.app.vault.getAbstractFileByPath(chat_folder_path);
-        console.log(chat_folder);
         if (!chat_folder) {
             await this.app.vault.createFolder(chat_folder_path);
         }
@@ -488,6 +650,9 @@ class FullPageChat extends ItemView {
 		`;
 
         let messages = ``;
+        if (this.conversation.length === 0) {
+            return;
+        }
         for (let i = 0; i < this.conversation.length; i++) {
             const message = this.conversation[i];
             const escaped_content = this.escapeXml(message.content);
@@ -560,7 +725,6 @@ export default class CaretPlugin extends Plugin {
 
         this.registerEvent(
             this.app.workspace.on("active-leaf-change", (event) => {
-                console.log({ event });
                 const currentLeaf = this.app.workspace.activeLeaf;
                 this.unhighlight_lineage();
 
@@ -585,15 +749,34 @@ export default class CaretPlugin extends Plugin {
                 const currentLeaf = this.app.workspace.activeLeaf;
                 const path = "caret/chats";
                 const folder = this.app.vault.getFolderByPath(path);
-                console.log(this);
-                console.log(this.app.getTheme());
 
                 if (currentLeaf?.view.getViewType() === "canvas") {
                     const canvasView = currentLeaf.view;
                     const canvas = (canvasView as any).canvas;
-                    // console.log(canvas);
                     const viewportNodes = canvas.getViewportNodes();
                 }
+                console.log(currentLeaf);
+                console.log(currentLeaf?.view);
+            },
+        });
+        this.addCommand({
+            id: "insert-note",
+            name: "Insert Note",
+            callback: async () => {
+                const currentLeaf = this.app.workspace.activeLeaf;
+                if (!currentLeaf) {
+                    new Notice("No active leaf");
+                    return;
+                }
+                const view = currentLeaf.view;
+                const view_type = view.getViewType();
+                // console.log("Workspace here");
+                // console.log(this.app.workspace);
+                // console.log("Current leaf here");
+                // console.log(currentLeaf);
+                // console.log({ view_type });
+
+                new InsertNoteModal(this.app, this, view).open();
             },
         });
 
@@ -747,14 +930,11 @@ export default class CaretPlugin extends Plugin {
                     content = content.replace("```xml", "").trim();
                     content = content.replace("```", "").trim();
                     const xml_object = await this.parseXml(content);
-                    console.log(content);
-                    console.log(xml_object);
                     const convo_id = xml_object.root.metadata[0].id[0];
                     const messages_from_xml = xml_object.root.conversation[0].message;
                     const messages: Message[] = [];
                     if (messages_from_xml) {
                         for (let i = 0; i < messages_from_xml.length; i++) {
-                            console.log(messages_from_xml[i].role);
                             const role = messages_from_xml[i].role[0];
                             const content = messages_from_xml[i].content[0];
                             messages.push({ role, content });
@@ -806,7 +986,6 @@ export default class CaretPlugin extends Plugin {
 
     async highlight_lineage() {
         await new Promise((resolve) => setTimeout(resolve, 200)); // Sleep for 200 milliseconds
-        console.log("Running highlight lineage");
 
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
         // @ts-ignore
@@ -857,8 +1036,6 @@ export default class CaretPlugin extends Plugin {
                 delete this.selected_node_colors[node_id]; // Remove from tracking object
             }
         });
-
-        console.log(this.selected_node_colors); // Log out the stored colors
     }
     async unhighlight_lineage() {
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
@@ -866,13 +1043,11 @@ export default class CaretPlugin extends Plugin {
         if (!canvas_view?.canvas) {
             return;
         }
-        console.log("Running in unhighlight_lineage");
         const canvas = (canvas_view as any).canvas;
         const nodes_iterator = canvas.nodes.values();
         const nodes_array = Array.from(nodes_iterator);
 
         for (const node_id in this.selected_node_colors) {
-            console.log("Resetting color");
             const filtered_nodes = nodes_array.filter((node: Node) => node.id === node_id);
             filtered_nodes.forEach((node: Node) => {
                 node.color = this.selected_node_colors[node_id]; // Reset the node color to its original
@@ -880,7 +1055,6 @@ export default class CaretPlugin extends Plugin {
             });
         }
         this.selected_node_colors = {}; // Clear the stored colors after resetting
-        console.log();
     }
     patchCanvasMenu() {
         const canvasView = this.app.workspace.getMostRecentLeaf()?.view;
@@ -893,7 +1067,6 @@ export default class CaretPlugin extends Plugin {
         }
         // @ts-ignore
         const canvas = canvasView.canvas;
-        // console.log(canvas);
 
         const menu = canvas.menu;
         if (!menu) {
@@ -1192,8 +1365,6 @@ export default class CaretPlugin extends Plugin {
     }
 
     parseCustomXML(xmlString: string, tags: string[]) {
-        console.log("In parse custom");
-        console.log({ tags, xmlString });
         // Function to extract content between tags
         function getContent(tag: string, string: string) {
             const openTag = `<${tag}>`;
@@ -1420,6 +1591,9 @@ export default class CaretPlugin extends Plugin {
     }
 
     async sparkle(node_id: string) {
+        const userRegex = /<role>User<\/role>/i;
+        const assistantRegex = /<role>assistant<\/role>/i;
+        console.log("Running in sparkle");
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
         // @ts-ignore
         if (!canvas_view || !canvas_view.canvas) {
@@ -1428,21 +1602,38 @@ export default class CaretPlugin extends Plugin {
         // @ts-ignore
         const canvas = canvas_view.canvas;
 
-        await canvas.requestSave(true);
-        const canvas_data = canvas.getData();
-        const { edges, nodes } = canvas_data;
-        const nodes_iterator = canvas.nodes.values();
-        let node = null;
-        for (const node_objs of nodes_iterator) {
-            if (node_objs.id === node_id) {
-                node = node_objs;
-                break;
+        async function getCurrentNode(canvas, node_id) {
+            await canvas.requestSave(true);
+            const nodes_iterator = canvas.nodes.values();
+            let node = null;
+            for (const node_obj of nodes_iterator) {
+                if (node_obj.id === node_id) {
+                    node = node_obj;
+                    break;
+                }
             }
+            return node;
         }
+
+        let node = await getCurrentNode(canvas, node_id);
         if (!node) {
             console.error("Node not found with ID:", node_id);
             return;
         }
+
+        // Add user xml if it's not there and re-fetch the node
+        const current_text = node.text;
+        if (!userRegex.test(current_text)) {
+            const modified_text = `<role>user</role>\n${current_text}`;
+            node.setText(modified_text);
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            node = await getCurrentNode(canvas, node_id); // Re-fetch the node to get the latest data
+            console.log("Refected node");
+            console.log({ node });
+        }
+
+        const canvas_data = canvas.getData();
+        const { edges, nodes } = canvas_data;
 
         // Continue with operations on `target_node`
         if (node.hasOwnProperty("file")) {
@@ -1455,7 +1646,6 @@ export default class CaretPlugin extends Plugin {
                 const front_matter_match = text.match(/^---\s*^([\s\S]*?)^---/m);
                 if (front_matter_match) {
                     const front_matter_content = front_matter_match[1];
-                    console.log("Front matter content extracted:", front_matter_content);
 
                     // Check for the presence of a caret prompt
                     const caret_prompt_match = front_matter_content.match(/caret_prompt:\s*(\w+)/);
@@ -1464,7 +1654,6 @@ export default class CaretPlugin extends Plugin {
                     if (caret_prompt_match) {
                         caret_prompt = caret_prompt_match[1];
                         const lines = front_matter_content.split("\n");
-                        console.log(lines);
 
                         // Find the index of the line that contains 'prompts'
                         const promptsIndex = lines.findIndex((line) => line.trim().startsWith("prompts:"));
@@ -1482,7 +1671,10 @@ export default class CaretPlugin extends Plugin {
                             }
                         }
                     }
+                    console.log("Does this happen?");
+                    console.log({ caret_prompt });
                     if (caret_prompt === "parallel_prompts") {
+                        console.log("What about here??");
                         const prompts = this.parseCustomXML(text, prompt_tags);
                         const prompts_keys = Object.keys(prompts);
                         const total_prompts = prompts_keys.length;
@@ -1492,7 +1684,6 @@ export default class CaretPlugin extends Plugin {
                         const sparklePromises = [];
                         for (let i = 0; i < prompts_keys.length; i++) {
                             const prompt = prompts[prompts_keys[i]];
-                            console.log({ prompt });
                             let x = node.x + node.width + 200;
                             let y = highest_y + i * (100 + card_height); // Increment y for each prompt to distribute them vertically including card height
                             const new_node_content = `<role>user</role>\n${prompt}`;
@@ -1511,8 +1702,6 @@ export default class CaretPlugin extends Plugin {
                         await Promise.all(sparklePromises);
                     }
                     return;
-                } else {
-                    console.log("Does anything happen here? Should it?");
                 }
             } else {
                 console.error("File not found or is not a readable file:", file_path);
@@ -1535,7 +1724,6 @@ export default class CaretPlugin extends Plugin {
         added_context += "\n" + ancestors_with_context;
         added_context = added_context.trim();
         let convo_total_tokens = this.encoder.encode(added_context);
-        console.log({ convo_total_tokens });
         let conversation = [];
 
         for (let i = 0; i < longest_lineage.length; i++) {
@@ -1564,9 +1752,6 @@ export default class CaretPlugin extends Plugin {
                 continue;
             }
 
-            const userRegex = /<role>User<\/role>/i;
-            const assistantRegex = /<role>assistant<\/role>/i;
-
             if (userRegex.test(text)) {
                 const split_text = text.split(userRegex);
                 const role = "user";
@@ -1575,13 +1760,11 @@ export default class CaretPlugin extends Plugin {
                 if (added_context.length > 1 && i === 0) {
                     content += `\n${added_context}`;
                 }
-                console.log(content);
                 const user_message_tokens = this.encoder.encode(content).length;
                 if (user_message_tokens + convo_total_tokens > this.settings.context_window) {
                     new Notice("Exceeding context window while adding user message. Trimming content");
                     break;
                 }
-                console.log({ user_message_tokens });
                 const message = {
                     role,
                     content,
@@ -1600,15 +1783,52 @@ export default class CaretPlugin extends Plugin {
             }
         }
         conversation.reverse();
-        console.log({ conversation });
 
-        // return;
-
-        const message = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
-        const content = message.content;
-        const node_content = `<role>assistant</role>\n${content}`;
+        // const message = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
+        const stream = await this.llm_call_streaming(this.settings.llm_provider, this.settings.model, conversation);
+        // const content = message.content;
+        const node_content = `<role>assistant</role>\n`;
         const x = node.x + node.width + 200;
-        this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
+        const new_node = await this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
+        if (!new_node) {
+            throw new Error("Invalid new node");
+        }
+        console.log({ new_node });
+        const new_node_id = new_node.id;
+        if (!new_node_id) {
+            throw new Error("Invalid node id");
+        }
+        await this.update_node_content(new_node_id, stream);
+        console.log("Does this run?");
+    }
+    async update_node_content(node_id: string, stream: any) {
+        console.log("Firing in update node_content");
+        const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
+        // @ts-ignore
+        if (!canvas_view?.canvas) {
+            return;
+        }
+        const canvas: Canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
+        console.log(canvas);
+        const canvas_data = canvas.getData();
+        // console.log(canvas_data);
+        // console.log(canvas.nodes);
+        const nodes_iterator = canvas.nodes.values();
+        let node = null;
+        for (const node_objs of nodes_iterator) {
+            if (node_objs.id === node_id) {
+                node = node_objs;
+                break;
+            }
+        }
+
+        if (this.settings.llm_provider === "openai" || "groq") {
+            for await (const part of stream) {
+                const delta_content = part.choices[0]?.delta.content || "";
+                const current_text = node.text;
+                node.setText(`${current_text}${delta_content}`);
+            }
+        }
     }
 
     async llm_call(provider: string, model: string, conversation: any[]): Promise<Message> {
@@ -1643,7 +1863,6 @@ export default class CaretPlugin extends Plugin {
             try {
                 const completion = await this.openai_client.chat.completions.create(params);
                 new Notice("Message back from OpenAI");
-                console.log(completion);
                 const message = completion.choices[0].message as Message;
                 return message;
             } catch (error) {
@@ -1666,9 +1885,75 @@ export default class CaretPlugin extends Plugin {
             try {
                 const completion = await this.groq_client.chat.completions.create(params);
                 new Notice("Message back from Groq");
-                console.log(completion);
                 const message = completion.choices[0].message as Message;
                 return message;
+            } catch (error) {
+                console.error("Error fetching chat completion from OpenAI:", error);
+                new Notice(error.message);
+                throw error;
+            }
+        } else {
+            const error_message = "Invalid llm provider / model configuration";
+            new Notice(error_message);
+            throw new Error(error_message);
+        }
+    }
+    async llm_call_streaming(provider: string, model: string, conversation: any[]) {
+        if (provider === "ollama") {
+            let model_param = model;
+            new Notice("Calling ollama");
+            try {
+                const response = await ollama.chat({
+                    model: model_param,
+                    messages: conversation,
+                    stream: true,
+                });
+                return response;
+            } catch (error) {
+                console.error(error);
+                if (error.message) {
+                    new Notice(error.message);
+                }
+                throw error;
+            }
+        } else if (provider == "openai") {
+            if (!this.openai_client) {
+                const error_message = "API Key not configured for OpenAI. Restart the app if you just added it!";
+                new Notice(error_message);
+                throw new Error(error_message);
+            }
+            new Notice("Calling OpenAI");
+            const params = {
+                messages: conversation,
+                model: model,
+                stream: true,
+            };
+            console.log("Calling openai in streaming. This is the convo");
+            console.log({ conversation });
+            try {
+                const stream = await this.openai_client.chat.completions.create(params);
+                return stream;
+            } catch (error) {
+                console.error("Error fetching chat completion from OpenAI:", error);
+                new Notice(error.message);
+                throw error;
+            }
+        } else if (provider == "groq") {
+            if (!this.groq_client) {
+                const error_message = "API Key not configured for Groq.  Restart the app if you just added it!";
+                new Notice(error_message);
+                throw new Error(error_message);
+            }
+            new Notice("Calling Groq");
+
+            const params = {
+                messages: conversation,
+                model: model,
+                stream: true,
+            };
+            try {
+                const stream = await this.groq_client.chat.completions.create(params);
+                return stream;
             } catch (error) {
                 console.error("Error fetching chat completion from OpenAI:", error);
                 new Notice(error.message);
@@ -1688,7 +1973,6 @@ export default class CaretPlugin extends Plugin {
             setIcon(buttonEl, "lucide-sparkles");
             buttonEl.addEventListener("click", async () => {
                 const canvasView = this.app.workspace.getMostRecentLeaf().view;
-                console.log({ canvasView });
                 // @ts-ignore
                 if (!canvasView.canvas) {
                     return;
@@ -1696,8 +1980,6 @@ export default class CaretPlugin extends Plugin {
                 // @ts-ignore
                 const canvas = canvasView.canvas;
                 await canvas.requestSave(true);
-                console.log(canvas.getData());
-                console.log("Canvas data");
                 const selection = canvas.selection;
                 const selectionIterator = selection.values();
                 const node = selectionIterator.next().value;
@@ -1863,7 +2145,6 @@ export default class CaretPlugin extends Plugin {
     //     });
     // }
     addChatIconToRibbon() {
-        console.log("Add side bar runs");
         this.addRibbonIcon("message-square", "Caret Chat", async (evt) => {
             await this.app.workspace.getLeaf(true).setViewState({
                 type: VIEW_NAME_MAIN_CHAT,
@@ -1875,8 +2156,6 @@ export default class CaretPlugin extends Plugin {
     onunload() {}
 
     async loadSettings() {
-        console.log("Loading settings");
-        console.log(await this.loadData());
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     }
 
@@ -1957,15 +2236,12 @@ class CaretSettingTab extends PluginSettingTab {
                     })
                     .setValue(this.plugin.settings.llm_provider)
                     .onChange(async (provider) => {
-                        console.log("On change this executes?");
                         this.plugin.settings.llm_provider = provider;
                         this.plugin.settings.model = Object.keys(llm_provider_options[provider])[0];
                         this.plugin.settings.context_window =
                             llm_provider_options[provider][this.plugin.settings.model].context_window;
                         await this.plugin.saveSettings();
                         await this.plugin.loadSettings();
-                        console.log(this.plugin.settings);
-                        console.log(this);
                         this.display();
                     });
             });
@@ -1974,15 +2250,10 @@ class CaretSettingTab extends PluginSettingTab {
             modelDropdown.setValue(this.plugin.settings.model);
             modelDropdown.onChange(async (value) => {
                 this.plugin.settings.model = value;
-                console.log(value);
-                console.log({ value });
-                console.log(this.plugin.settings.llm_provider);
                 this.plugin.settings.context_window =
                     llm_provider_options[this.plugin.settings.llm_provider][value].context_window;
                 await this.plugin.saveSettings();
                 await this.plugin.loadSettings();
-                console.log("SEtetings here");
-                console.log(this.plugin.settings);
                 this.display();
             });
         });
@@ -2028,7 +2299,6 @@ class CaretSettingTab extends PluginSettingTab {
                         this.plugin.settings.openai_api_key = value;
                         await this.plugin.saveSettings();
                         await this.plugin.loadSettings();
-                        console.log(this.plugin.settings);
                     });
                 text.inputEl.addClass("hidden-value-unsecure");
             });
@@ -2043,7 +2313,6 @@ class CaretSettingTab extends PluginSettingTab {
                         this.plugin.settings.groq_api_key = value;
                         await this.plugin.saveSettings();
                         await this.plugin.loadSettings();
-                        console.log(this.plugin.settings);
                     });
                 text.inputEl.addClass("hidden-value-unsecure");
             });

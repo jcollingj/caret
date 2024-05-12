@@ -1,6 +1,6 @@
 {
     "name": "caret",
-    "version": "0.2.6",
+    "version": "0.2.7",
     "description": "This is caret",
     "main": "main.js",
     "scripts": {
@@ -25,6 +25,7 @@
         "@bundled-es-modules/pdfjs-dist": "^3.6.172-alpha.1",
         "@codemirror/language": "^6.10.1",
         "dotenv": "^16.4.5",
+        "fuse.js": "^7.0.0",
         "groq-sdk": "^0.3.3",
         "js-tiktoken": "^1.0.11",
         "monkey-around": "^3.0.0",

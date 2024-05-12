@@ -89,3 +89,36 @@
 .hidden-value-unsecure {
     -webkit-text-security: disc;
 }
+
+.insert-file-header {
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.insert-file-files-display {
+    height: 200px;
+    overflow: auto; /* Changed from 'hidden' to 'auto' to allow scrolling */
+}
+
+.insert-file-file-name {
+    font-size: 14px;
+    color: black;
+    padding-top: 1px;
+    padding-bottom: 1px;
+    padding-left: 2px;
+    border: 1px solid transparent; /* Ensures layout doesn't change when selected */
+    transition: font-size 0.2s, border-color 0.2s; /* Smooth transition for visual changes */
+
+}
+
+.file-filter-input {
+    margin-bottom: 4px;
+    width: 100%;
+}
+
+.insert-file-file-name.selected {
+    font-size: 16px; /* Slightly larger font size for selected item */
+    border-color: #cccccc; /* Light gray border for selected item */
+    background-color: #f0f0f0; /* Optional: light background color for better visibility */
+    border-radius: 4px;
+}
