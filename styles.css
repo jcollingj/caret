@@ -99,18 +99,14 @@
     height: 200px;
     overflow: auto; /* Changed from 'hidden' to 'auto' to allow scrolling */
 }
-
 .insert-file-file-name {
     font-size: 14px;
-    color: black;
     padding-top: 1px;
     padding-bottom: 1px;
     padding-left: 2px;
     border: 1px solid transparent; /* Ensures layout doesn't change when selected */
     transition: font-size 0.2s, border-color 0.2s; /* Smooth transition for visual changes */
-
 }
-
 .file-filter-input {
     margin-bottom: 4px;
     width: 100%;

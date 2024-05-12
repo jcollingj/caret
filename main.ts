@@ -749,14 +749,14 @@ export default class CaretPlugin extends Plugin {
                 const currentLeaf = this.app.workspace.activeLeaf;
                 const path = "caret/chats";
                 const folder = this.app.vault.getFolderByPath(path);
+                console.log(this.app);
+                console.log(this.app.vault.getConfig());
 
                 if (currentLeaf?.view.getViewType() === "canvas") {
                     const canvasView = currentLeaf.view;
                     const canvas = (canvasView as any).canvas;
                     const viewportNodes = canvas.getViewportNodes();
                 }
-                console.log(currentLeaf);
-                console.log(currentLeaf?.view);
             },
         });
         this.addCommand({
