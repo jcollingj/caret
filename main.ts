@@ -586,6 +586,7 @@ export default class CaretPlugin extends Plugin {
                 const path = "caret/chats";
                 const folder = this.app.vault.getFolderByPath(path);
                 console.log(this);
+                console.log(this.app.getTheme());
 
                 if (currentLeaf?.view.getViewType() === "canvas") {
                     const canvasView = currentLeaf.view;
@@ -690,8 +691,8 @@ export default class CaretPlugin extends Plugin {
         });
 
         this.addCommand({
-            id: "open-cmdj-modal",
-            name: "Open CMD+J Modal",
+            id: "inline-editing",
+            name: "Inline Editing",
             hotkeys: [{ modifiers: ["Mod"], key: "j" }],
             callback: () => {
                 const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -1171,7 +1172,7 @@ export default class CaretPlugin extends Plugin {
             const target_node = viewport_nodes.find((node) => node.id === targetNodeID);
 
             canvas.selectOnly(target_node);
-            canvas.zoomToSelection();
+            canvas.zoomToSelection(target_node);
         }
         this.highlight_lineage();
     }
@@ -1481,7 +1482,7 @@ export default class CaretPlugin extends Plugin {
                             }
                         }
                     }
-                    if (caret_prompt === "multiprompt") {
+                    if (caret_prompt === "parallel_prompts") {
                         const prompts = this.parseCustomXML(text, prompt_tags);
                         const prompts_keys = Object.keys(prompts);
                         const total_prompts = prompts_keys.length;

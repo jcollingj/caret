@@ -8,7 +8,6 @@
     background-color: ; /* Background color not specified */
     white-space: pre-wrap; /* Preserve whitespace and formatting */
 }
-
 .messages-container {
     flex-grow: 1;
     display: flex;
@@ -28,23 +27,18 @@
     max-width: calc(100% - 10px); /* Prevent overflow */
     word-wrap: break-word; /* Ensure long words do not cause overflow */
     white-space: pre-wrap; /* Preserve whitespace and formatting */
-    user-select:text;
+    user-select: text;
+    color: black; /* Set text color to black */
 }
 
 .message.user, .message.system {
-    align-self: flex-start; /* Adjust if needed */
-    background-color: #f0f0f0; /* No change for user */
-    /* System message color adjusted below if needed */
+    align-self: flex-start;
+    background-color: #e0e0e0; /* Light gray for better visibility in both light and dark modes */
     white-space: pre-wrap; /* Preserve whitespace and formatting */
 }
 
 .message.assistant {
-    background-color: #d1e7dd;
-    white-space: pre-wrap; /* Preserve whitespace and formatting */
-}
-
-.messages-container {
-    height: 240px;
+    background-color: #cfe9e3; /* Light green for better visibility in both light and dark modes */
     white-space: pre-wrap; /* Preserve whitespace and formatting */
 }
 

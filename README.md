@@ -1,96 +1,66 @@
-# Obsidian Sample Plugin
+## Caret
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+Caret enables new LLM-powered workflows in Obsidian.
+## Known Issues
 
-This project uses Typescript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in Typescript Definition format, which contains TSDoc comments describing what it does.
+- **Sparkle Icon**: May render context incompletely if used immediately after editing a note on Canvas. *Workaround*: Allow a brief pause (Like 1 second) before using the sparkle icon.
+- **Color Coding**: Highlighted canvas branches might retain the green color indefinitely if you don't click on the canvas before changing pages or exiting Obsidian.
+	- Might add a toggle to disable this if I can't fix it quickly
+	- I would avoid using this in heavily color coded graphs for now
 
-**Note:** The Obsidian API is still in early alpha and is subject to change at any time!
+## Installation Instructions
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open Sample Modal" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and output 'click' to the console.
-- Registers a global interval which logs 'setInterval' to the console.
+### Step 1: Install the BRAT Plugin from TfTHacker
+1. BRAT is the **Beta Reviewers Auto-update Tool**
+   - https://tfthacker.com/BRAT
+2. You can install this through the Community Plugins within Obsidian.
 
-## First time developing plugins?
+### Step 2: Install Caret
+   - Open up the BRAT Plugin
+   - Add the Personal Access Token
+	   - This enables read access to private Caret repo, which allows you to download the plugin
+	   - PAT: `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`
+   - Click Add Beta Plugin
+   - For repo enter: `jcollingj/caret`
+   - You can choose whether you want to auto update the plugins or not! It might be useful while I'm rapidly iterating on this
 
-Quick starting guide for new plugin devs:
+### Step 3: Configure Caret Settings
+- Within your settings page open up the Caret settings
+- Pick the model you want to use
+- When you add API Keys you need to then reload the app for those changes to take effect. That's only for API keys. You can change the providers/models at any time without reloading.
+- Note that there are a couple additional steps if you want to use ollama running locally
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
-- Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
-
-## Releasing new releases
-
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
-
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
-
-## Adding your plugin to the community plugin list
-
-- Check https://github.com/obsidianmd/obsidian-releases/blob/master/plugin-review.md
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
-
-## How to use
-
-- Clone this repo.
-- Make sure your NodeJS is at least v16 (`node --version`).
-- `npm i` or `yarn` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
-
-## Manually installing the plugin
-
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
-
-## Improve code quality with eslint (optional)
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 
-- To use eslint with this project, make sure to install eslint from terminal:
-  - `npm install -g eslint`
-- To use eslint to analyze this project use this command:
-  - `eslint main.ts`
-  - eslint will then create a report with suggestions for code improvement by file and line number.
-- If your source code is in a folder, such as `src`, you can use eslint with this command to analyze all files in that folder:
-  - `eslint .\src\`
-
-## Funding URL
-
-You can include funding URLs where people who use your plugin can financially support it.
-
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
-
-```json
-{
-    "fundingUrl": "https://buymeacoffee.com"
-}
-```
-
-If you have multiple URLs, you can also do:
-
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://buymeacoffee.com",
-        "GitHub Sponsor": "https://github.com/sponsors",
-        "Patreon": "https://www.patreon.com/"
-    }
-}
-```
-
-## API Documentation
-
-See https://github.com/obsidianmd/obsidian-api
+## Features
+### Standard LLM Chat
+- Like ChatGPT, but local first and the output is stored directly in your vault as markdown files. Meaning every conversation is instantly searchable and can be used as input to other Caret features.
+- Open this from the chat icon added to the side bar.
+- This does create a new folder `caret/chats` and stores all chats in this
+### Chat in Canvas
+- Explore non-linear chats in the Obsidian canvas. Easily remix conversations by moving, linking, and unlinking nodes
+- Use the node icon within the menu to add new nodes that are pre-formatted for user messages.
+- Click the Sparkle icon for initiating new conversations.
+- Incorporate block refs by just using them! Caret will grab the context automatically
+- ##### Chat Format
+	- Within the canvas the nodes need to have a specific format for the chat to know which is which. Add a role xml tag with user in the middle to the beginning of text notes to make it be from the user.
+		- The format is `<role>user</role>`
+		- The easiest way to do this is to just click the "Add Child" button the menu
+- ##### Custom Keybinds (Canvas)
+	- **Graph Navigation**: Use `Mod + Arrow key` to navigate through nodes. (Note: Current limitations with multiple branches).
+	- **Node Creation**: `Shift+Mod+Arrow Key` to create a new node in the specified direction.
+	- **Activate Sparkle**: `Command + Shift + Enter`
+- **Parallel Prompts**
+	- You can save collections of prompts as special notes. You can then add these to the canvas, connect a node and sparkle! It will run all of the prompts stored in that note against your input node.
+	- The structure of parallel prompt note is as follows:
+		- **Note Properties** - Add two properties to the note.
+			- `caret_prompt` set to `parallel_prompts`
+				- This is text
+			- `prompts` this is a list of the prompts you will add in the notes
+		- **Note Content** - Add xml code blocks that contain an xml tag with the same name as what you listed in the `prompts` property. One code block per prompt.
+		- So if I had a property called `best_season` my code block would look like:
+			- ```xml 
+				  <best_season> Whats the best time visit the following location? </best_season>``` 
+		
+### Inline Editing
+- Inline editing can be used in markdown files. Either use the command pallette or CMD+J when you have text selected. That text will be used as the context. Add the prompt and then choose append or edit.
+- The LLM will generate a response. This is added into your existing file. It will be formatted as a janky diff for now. So you can see what the changes would be before you apply them
+- Then use the command "Apply Diffs" to apply those changes if you want them
