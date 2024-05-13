@@ -1586,7 +1586,9 @@ export default class CaretPlugin extends Plugin {
                 const ancestor = nodes.find((node) => node.id === edge.fromNode);
                 if (ancestor) {
                     if (ancestor.type === "text") {
-                        ancestors_context += ancestor.text + "\n";
+                        if (!ancestor.text.includes("<role>")) {
+                            ancestors_context += ancestor.text + "\n";
+                        }
                     } else if (ancestor.type === "file" && ancestor.file && ancestor.file.includes(".md")) {
                         const file_path = ancestor.file;
                         const file = this.app.vault.getFileByPath(file_path);
@@ -1830,6 +1832,8 @@ export default class CaretPlugin extends Plugin {
             }
         }
         conversation.reverse();
+        console.log("HEREEEE");
+        console.log({ conversation });
 
         // const message = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
         const stream = await this.llm_call_streaming(this.settings.llm_provider, this.settings.model, conversation);

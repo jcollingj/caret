@@ -1,7 +1,7 @@
 {
     "id": "caret",
     "name": "Caret",
-    "version": "0.2.13",
+    "version": "0.2.14",
     "minAppVersion": "1.5.12",
     "description": "Caret, working nicely in Obsidian.",
     "author": "Jake Colling",
