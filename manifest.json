@@ -1,11 +1,11 @@
 {
     "id": "caret",
     "name": "Caret",
-    "version": "0.2.9",
+    "version": "0.2.10",
     "minAppVersion": "1.5.12",
     "description": "Caret, working nicely in Obsidian.",
     "author": "Jake Colling",
     "authorUrl": "https://twitter.com/JacobColling",
     "fundingUrl": "https://twitter.com/JacobColling",
-    "isDesktopOnly": false
+    "isDesktopOnly": true
 }
