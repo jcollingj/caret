@@ -1573,6 +1573,40 @@ export default class CaretPlugin extends Plugin {
         }
         return direct_ancentors_context;
     }
+    async getAllAncestorsWithContext(nodes: Node[], edges: Edge[], nodeId: string): Promise<string> {
+        let ancestors_context = "";
+
+        const findAncestorsWithContext = async (nodeId: string) => {
+            const node = nodes.find((node) => node.id === nodeId);
+            if (!node) return;
+
+            const incomingEdges: Edge[] = edges.filter((edge) => edge.toNode === nodeId);
+            for (let i = 0; i < incomingEdges.length; i++) {
+                const edge = incomingEdges[i];
+                const ancestor = nodes.find((node) => node.id === edge.fromNode);
+                if (ancestor) {
+                    if (ancestor.type === "text") {
+                        ancestors_context += ancestor.text + "\n";
+                    } else if (ancestor.type === "file" && ancestor.file && ancestor.file.includes(".md")) {
+                        const file_path = ancestor.file;
+                        const file = this.app.vault.getFileByPath(file_path);
+                        if (file) {
+                            const context = await this.app.vault.cachedRead(file);
+                            if (!context.includes("caret_prompt")) {
+                                ancestors_context += "\n" + context;
+                            }
+                        } else {
+                            console.error("File not found:", file_path);
+                        }
+                    }
+                    await findAncestorsWithContext(ancestor.id);
+                }
+            }
+        };
+
+        await findAncestorsWithContext(nodeId);
+        return ancestors_context;
+    }
 
     async get_ref_blocks_content(node: any): Promise<string> {
         let rep_block_content = "";
@@ -1642,9 +1676,8 @@ export default class CaretPlugin extends Plugin {
             node.setText(modified_text);
             await new Promise((resolve) => setTimeout(resolve, 200));
             node = await getCurrentNode(canvas, node_id); // Re-fetch the node to get the latest data
-            console.log("Refected node");
-            console.log({ node });
         }
+        console.log({ node });
 
         const canvas_data = canvas.getData();
         const { edges, nodes } = canvas_data;
@@ -1726,7 +1759,7 @@ export default class CaretPlugin extends Plugin {
         // const all_ancestors = this.getAllAncestorNodes(nodes, edges, node.id);
         const longest_lineage = this.getLongestLineage(nodes, edges, node.id);
 
-        const ancestors_with_context = await this.getDirectAncestorsWithContext(nodes, edges, node.id);
+        const ancestors_with_context = await this.getAllAncestorsWithContext(nodes, edges, node.id);
         // TODO - This needs to be cleaned up. Not sure what's going on with this
         // I would think it shoudl be plural. But it;'s only checking one node?
         const ref_blocks = await this.get_ref_blocks_content(node);
@@ -1835,12 +1868,25 @@ export default class CaretPlugin extends Plugin {
                 break;
             }
         }
+        node.width = 510;
 
         if (this.settings.llm_provider === "openai" || this.settings.llm_provider === "groq") {
             for await (const part of stream) {
                 const delta_content = part.choices[0]?.delta.content || "";
+
                 const current_text = node.text;
-                node.setText(`${current_text}${delta_content}`);
+                const new_content = `${current_text}${delta_content}`;
+                const word_count = new_content.split(/\s+/).length;
+                const number_of_lines = Math.ceil(word_count / 10);
+                if (word_count > 500) {
+                    node.width = 750;
+                    node.height = Math.max(100, number_of_lines * 25);
+                } else {
+                    node.height = Math.max(100, number_of_lines * 30);
+                }
+
+                node.setText(new_content);
+                node.render();
             }
         }
         if (this.settings.llm_provider === "ollama") {
