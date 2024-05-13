@@ -2327,6 +2327,7 @@ class CaretSettingTab extends PluginSettingTab {
             openai: {
                 "gpt-4-turbo": { name: "gpt-4-turbo", context_window: 128000 },
                 "gpt-3.5-turbo": { name: "gpt-3.5-turbo", context_window: 128000 },
+                "gpt-4o": { name: "gpt-4o", context_window: 128000 },
             },
             groq: {
                 "llama3-8b-8192": { name: "Llama 8B", context_window: 8192 },
@@ -2404,6 +2405,13 @@ class CaretSettingTab extends PluginSettingTab {
                 this.display();
             });
         });
+        if (this.plugin.settings.model === "gpt-4o") {
+            new Setting(containerEl)
+                .setName("GPT-4o")
+                .setDesc(
+                    "You are are using the new model! If you check errors it might be because your API key doesn't have access."
+                );
+        }
 
         if (context_window) {
             setting.setDesc(`FYI your selected model has a context window of ${context_window}`);
