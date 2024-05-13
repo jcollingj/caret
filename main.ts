@@ -1892,7 +1892,18 @@ export default class CaretPlugin extends Plugin {
         if (this.settings.llm_provider === "ollama") {
             for await (const part of stream) {
                 const current_text = node.text;
-                node.setText(`${current_text}${part.message.content}`);
+                const new_content = `${current_text}${part.message.content}`;
+                const word_count = new_content.split(/\s+/).length;
+                const number_of_lines = Math.ceil(word_count / 10);
+                if (word_count > 500) {
+                    node.width = 750;
+                    node.height = Math.max(100, number_of_lines * 25);
+                } else {
+                    node.height = Math.max(100, number_of_lines * 30);
+                }
+
+                node.setText(new_content);
+                node.render();
             }
         }
     }
