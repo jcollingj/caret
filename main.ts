@@ -1,3 +1,4 @@
+import { generateHashForUUID, validateUUIDHashPair, validate_license_key } from "./license_hashing";
 import Fuse from "fuse.js";
 import { encodingForModel } from "js-tiktoken";
 // @ts-ignore
@@ -320,6 +321,8 @@ interface CaretPluginSettings {
     openai_api_key: string;
     groq_api_key: string;
     context_window: number;
+    license_key: string;
+    license_hash: string;
 }
 
 const DEFAULT_SETTINGS: CaretPluginSettings = {
@@ -328,119 +331,121 @@ const DEFAULT_SETTINGS: CaretPluginSettings = {
     openai_api_key: "",
     groq_api_key: "",
     context_window: 0,
+    license_key: "",
+    license_hash: "",
 };
 
-// export const VIEW_NAME_SIDEBAR_CHAT = "sidebar-caret";
-// class SidebarChat extends ItemView {
-//     constructor(leaf: WorkspaceLeaf) {
-//         super(leaf);
-//     }
-//     textBox: HTMLTextAreaElement;
-//     messagesContainer: HTMLElement; // Container for messages
+export const VIEW_NAME_SIDEBAR_CHAT = "sidebar-caret";
+class SidebarChat extends ItemView {
+    constructor(leaf: WorkspaceLeaf) {
+        super(leaf);
+    }
+    textBox: HTMLTextAreaElement;
+    messagesContainer: HTMLElement; // Container for messages
 
-//     getViewType() {
-//         return VIEW_NAME_SIDEBAR_CHAT;
-//     }
+    getViewType() {
+        return VIEW_NAME_SIDEBAR_CHAT;
+    }
 
-//     getDisplayText() {
-//         return VIEW_NAME_SIDEBAR_CHAT;
-//     }
+    getDisplayText() {
+        return VIEW_NAME_SIDEBAR_CHAT;
+    }
 
-//     async onOpen() {
-//         const metacontainer = this.containerEl.children[1];
-//         metacontainer.empty();
-//         const container = metacontainer.createEl("div", {
-//             cls: "container",
-//         });
-//         metacontainer.prepend(container);
-//         // this.containerEl.appendChild(container);
+    async onOpen() {
+        const metacontainer = this.containerEl.children[1];
+        metacontainer.empty();
+        const container = metacontainer.createEl("div", {
+            cls: "container",
+        });
+        metacontainer.prepend(container);
+        // this.containerEl.appendChild(container);
 
-//         // Create a container for messages
-//         this.messagesContainer = container.createEl("div", {
-//             cls: "messages-container",
-//         });
+        // Create a container for messages
+        this.messagesContainer = container.createEl("div", {
+            cls: "messages-container",
+        });
 
-//         // Add a "Hello World" message
-//         this.addMessage("MLX Testing", "system");
-//         this.createChatInputArea(container);
-//     }
-//     createChatInputArea(container: HTMLElement) {
-//         // Create a container for the text box and the submit button
-//         const inputContainer = container.createEl("div", {
-//             cls: "chat-input-container",
-//         });
+        // Add a "Hello World" message
+        this.addMessage("MLX Testing", "system");
+        this.createChatInputArea(container);
+    }
+    createChatInputArea(container: HTMLElement) {
+        // Create a container for the text box and the submit button
+        const inputContainer = container.createEl("div", {
+            cls: "chat-input-container",
+        });
 
-//         // Create the text box within the input container
-//         this.textBox = inputContainer.createEl("textarea", {
-//             cls: "full_width_text_container",
-//         });
-//         this.textBox.placeholder = "Type something...";
+        // Create the text box within the input container
+        this.textBox = inputContainer.createEl("textarea", {
+            cls: "full_width_text_container",
+        });
+        this.textBox.placeholder = "Type something...";
 
-//         // Create the submit button within the input container
-//         const button = inputContainer.createEl("button");
-//         button.textContent = "Submit";
-//         button.addEventListener("click", () => {
-//             this.submitMessage(this.textBox.value);
-//             this.textBox.value = ""; // Clear the text box after sending
-//         });
-//     }
+        // Create the submit button within the input container
+        const button = inputContainer.createEl("button");
+        button.textContent = "Submit";
+        button.addEventListener("click", () => {
+            this.submitMessage(this.textBox.value);
+            this.textBox.value = ""; // Clear the text box after sending
+        });
+    }
 
-//     addMessage(text: string, sender: "user" | "system") {
-//         const messageDiv = this.messagesContainer.createEl("div", {
-//             cls: `message ${sender}`,
-//         });
-//         messageDiv.textContent = text;
-//     }
+    addMessage(text: string, sender: "user" | "system") {
+        const messageDiv = this.messagesContainer.createEl("div", {
+            cls: `message ${sender}`,
+        });
+        messageDiv.textContent = text;
+    }
 
-//     submitMessage(userMessage: string) {
-//         let current_page_content = "";
-//         if (userMessage.includes("@current")) {
-//             // Find the first MarkdownView that is open in the workspace
-//             const markdownView = this.app.workspace
-//                 .getLeavesOfType("markdown")
-//                 // @ts-ignore
-//                 .find((leaf) => leaf.view instanceof MarkdownView && leaf.width > 0)?.view as MarkdownView;
-//             if (markdownView && markdownView.editor) {
-//                 current_page_content = markdownView.editor.getValue();
-//             }
-//         }
-//         this.addMessage(userMessage, "user"); // Display the user message immediately
+    submitMessage(userMessage: string) {
+        let current_page_content = "";
+        if (userMessage.includes("@current")) {
+            // Find the first MarkdownView that is open in the workspace
+            const markdownView = this.app.workspace
+                .getLeavesOfType("markdown")
+                // @ts-ignore
+                .find((leaf) => leaf.view instanceof MarkdownView && leaf.width > 0)?.view as MarkdownView;
+            if (markdownView && markdownView.editor) {
+                current_page_content = markdownView.editor.getValue();
+            }
+        }
+        this.addMessage(userMessage, "user"); // Display the user message immediately
 
-//         const current_page_message = `
-// 		${userMessage}
+        const current_page_message = `
+		${userMessage}
 
-// 		------ Note for Model ---
-// 		When I am referring to @current, I meant the following:
+		------ Note for Model ---
+		When I am referring to @current, I meant the following:
 
-// 		${current_page_content}
-// 		`;
+		${current_page_content}
+		`;
 
-//         let final_message = userMessage;
-//         if (current_page_content.length > 0) {
-//             final_message = current_page_message;
-//         }
+        let final_message = userMessage;
+        if (current_page_content.length > 0) {
+            final_message = current_page_message;
+        }
 
-//         const data = { message: final_message };
-//         fetch("http://localhost:8000/conversation", {
-//             method: "POST",
-//             headers: {
-//                 "Content-Type": "application/json",
-//             },
-//             body: JSON.stringify(data),
-//         })
-//             .then((response) => response.json())
-//             .then((data) => {
-//                 this.addMessage(data.response, "system"); // Display the response
-//             })
-//             .catch((error) => {
-//                 console.error("Error:", error);
-//             });
-//     }
+        const data = { message: final_message };
+        fetch("http://localhost:8000/conversation", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(data),
+        })
+            .then((response) => response.json())
+            .then((data) => {
+                this.addMessage(data.response, "system"); // Display the response
+            })
+            .catch((error) => {
+                console.error("Error:", error);
+            });
+    }
 
-//     async onClose() {
-//         // Cleanup logic if necessary
-//     }
-// }
+    async onClose() {
+        // Cleanup logic if necessary
+    }
+}
 
 export const VIEW_NAME_MAIN_CHAT = "main-caret";
 class FullPageChat extends ItemView {
@@ -450,6 +455,7 @@ class FullPageChat extends ItemView {
     textBox: HTMLTextAreaElement;
     messagesContainer: HTMLElement; // Container for messages
     conversation: Message[]; // List to store conversation messages
+    is_generating: boolean;
     constructor(plugin: any, leaf: WorkspaceLeaf, chat_id?: string, conversation: Message[] = []) {
         super(leaf);
         this.plugin = plugin;
@@ -509,8 +515,14 @@ class FullPageChat extends ItemView {
         const submitButton = buttonContainer.createEl("button", {});
         submitButton.textContent = "Submit";
         const submitAction = () => {
-            this.submitMessage(this.textBox.value);
-            this.textBox.value = ""; // Clear the text box after sending
+            if (!this.is_generating) {
+                if (this.textBox.value.length > 0) {
+                    this.submitMessage(this.textBox.value);
+                    this.textBox.value = ""; // Clear the text box after sending
+                }
+            } else {
+                new Notice("Response still in progress");
+            }
         };
 
         submitButton.addEventListener("click", submitAction);
@@ -563,6 +575,7 @@ class FullPageChat extends ItemView {
     }
 
     async submitMessage(userMessage: string) {
+        this.is_generating = true;
         const user_message_tokens = this.plugin.encoder.encode(userMessage).length;
         if (user_message_tokens > this.plugin.settings.context_window) {
             new Notice(
@@ -578,7 +591,9 @@ class FullPageChat extends ItemView {
         for (let i = 0; i < this.conversation.length; i++) {
             let message = this.conversation[i];
             let modified_content = message.content;
-            console.log(`Message ${i.toString()} -${message.content} `);
+            if (modified_content.length === 0) {
+                continue;
+            }
 
             // Check for text in double brackets and log the match
             const bracket_regex = /\[\[(.*?)\]\]/g;
@@ -602,14 +617,14 @@ class FullPageChat extends ItemView {
             total_context_length += message_length;
             valid_conversation.push({ ...message, content: modified_content }); // Push modified content in a hidden way
         }
-        console.log({ valid_conversation });
         const response = await this.plugin.llm_call_streaming(
             this.plugin.settings.llm_provider,
             this.plugin.settings.model,
             valid_conversation
         );
         this.addMessage("", "assistant"); // Display the response
-        this.streamMessage(response);
+        await this.streamMessage(response);
+        this.is_generating = false;
     }
     focusAndPositionCursorInTextBox() {
         this.textBox.focus();
@@ -736,7 +751,6 @@ export default class CaretPlugin extends Plugin {
                 }
             })
         );
-
         this.registerEditorExtension([redBackgroundField]);
 
         // Register the sidebar icon
@@ -892,24 +906,24 @@ export default class CaretPlugin extends Plugin {
         });
 
         // Register the custom view
-        // this.registerView(VIEW_NAME_SIDEBAR_CHAT, (leaf) => new SidebarChat(leaf));
+        this.registerView(VIEW_NAME_SIDEBAR_CHAT, (leaf) => new SidebarChat(leaf));
         this.registerView(VIEW_NAME_MAIN_CHAT, (leaf) => new FullPageChat(this, leaf));
         // Define a command to insert text into the sidebar
-        // this.addCommand({
-        //     id: "insert-text-into-sidebar",
-        //     name: "Insert Text into Sidebar",
-        //     hotkeys: [{ modifiers: ["Mod"], key: "l" }],
-        //     callback: () => {
-        //         const activeLeaf = this.app.workspace.activeLeaf;
-        //         if (activeLeaf) {
-        //             const editor = activeLeaf.view instanceof MarkdownView ? activeLeaf.view.editor : null;
-        //             if (editor) {
-        //                 const selectedText = editor.getSelection();
-        //                 this.insertTextIntoSidebar(selectedText);
-        //             }
-        //         }
-        //     },
-        // });
+        this.addCommand({
+            id: "insert-text-into-sidebar",
+            name: "Insert Text into Sidebar",
+            hotkeys: [{ modifiers: ["Mod"], key: "l" }],
+            callback: () => {
+                const activeLeaf = this.app.workspace.activeLeaf;
+                if (activeLeaf) {
+                    const editor = activeLeaf.view instanceof MarkdownView ? activeLeaf.view.editor : null;
+                    if (editor) {
+                        const selectedText = editor.getSelection();
+                        this.insertTextIntoSidebar(selectedText);
+                    }
+                }
+            },
+        });
 
         // // Define a command to clear text from the sidebar
         // this.addCommand({
@@ -1623,7 +1637,7 @@ export default class CaretPlugin extends Plugin {
 
         // Add user xml if it's not there and re-fetch the node
         const current_text = node.text;
-        if (!userRegex.test(current_text)) {
+        if (!userRegex.test(current_text) && !node.hasOwnProperty("file")) {
             const modified_text = `<role>user</role>\n${current_text}`;
             node.setText(modified_text);
             await new Promise((resolve) => setTimeout(resolve, 200));
@@ -2117,33 +2131,33 @@ export default class CaretPlugin extends Plugin {
         canvas.requestFrame();
     };
 
-    // // Method to insert text into the sidebar
-    // insertTextIntoSidebar(text: string) {
-    //     const trimmed_text = text.trim();
-    //     this.app.workspace.iterateAllLeaves((leaf) => {
-    //         if (leaf.view.getViewType() === VIEW_NAME_SIDEBAR_CHAT) {
-    //             const view = leaf.view as SidebarChat;
-    //             if (view.textBox) {
-    //                 view.textBox.value += trimmed_text;
-    //             }
-    //         }
-    //     });
-    // }
+    // Method to insert text into the sidebar
+    insertTextIntoSidebar(text: string) {
+        const trimmed_text = text.trim();
+        this.app.workspace.iterateAllLeaves((leaf) => {
+            if (leaf.view.getViewType() === VIEW_NAME_SIDEBAR_CHAT) {
+                const view = leaf.view as SidebarChat;
+                if (view.textBox) {
+                    view.textBox.value += trimmed_text;
+                }
+            }
+        });
+    }
 
     // // Method to clear text from the sidebar
-    // clearTextInSidebar() {
-    //     this.app.workspace.iterateAllLeaves((leaf) => {
-    //         if (leaf.view.getViewType() === VIEW_NAME_SIDEBAR_CHAT) {
-    //             const view = leaf.view as SidebarChat;
-    //             if (view.textBox) {
-    //                 view.textBox.value = ""; // Clear the text box
-    //             }
-    //             if (view.messagesContainer) {
-    //                 view.messagesContainer.innerHTML = ""; // Clear the messages container
-    //             }
-    //         }
-    //     });
-    // }
+    clearTextInSidebar() {
+        this.app.workspace.iterateAllLeaves((leaf) => {
+            if (leaf.view.getViewType() === VIEW_NAME_SIDEBAR_CHAT) {
+                const view = leaf.view as SidebarChat;
+                if (view.textBox) {
+                    view.textBox.value = ""; // Clear the text box
+                }
+                if (view.messagesContainer) {
+                    view.messagesContainer.innerHTML = ""; // Clear the messages container
+                }
+            }
+        });
+    }
     addChatIconToRibbon() {
         this.addRibbonIcon("message-square", "Caret Chat", async (evt) => {
             await this.app.workspace.getLeaf(true).setViewState({
@@ -2172,10 +2186,76 @@ class CaretSettingTab extends PluginSettingTab {
         this.plugin = plugin;
     }
 
+    async activate_license(license: string) {
+        new Notice("Activating license...");
+        this.plugin.settings.license_key = license;
+        const activation_output = await validate_license_key(license);
+        console.log({ activation_output });
+        if (!activation_output.status) {
+            new Notice("Error in license activation. Please try again. ");
+            new Notice("If it continues please contact Jake for help.");
+        }
+        if (!activation_output.validKey) {
+            if (activation_output.message === "invalid_key") {
+                new Notice("Invalid License Key");
+            } else if (activation_output.message === "too_many_activations") {
+                new Notice("License has exceeded allowed activations");
+                new Notice("Please contact Jake for more activations");
+            } else {
+                new Notice("Key is invalid for an unknown reason");
+                new Notice("If it continues please contact Jake for help.");
+            }
+            return { status: false };
+        } else {
+            const hash = generateHashForUUID(license);
+            const valid_license = { status: true, hash: hash };
+            return valid_license;
+        }
+    }
+
     display(): void {
         const { containerEl } = this;
-
         containerEl.empty();
+        console.log("Running in dispaly");
+        if (
+            !this.plugin.settings.license_key ||
+            !this.plugin.settings.license_hash ||
+            !validateUUIDHashPair(this.plugin.settings.license_key, this.plugin.settings.license_hash)
+        ) {
+            console.log("Are we in here at all?");
+            console.log(this.plugin.settings);
+            new Setting(containerEl)
+                .setName("License Key")
+                .setDesc("Enter your license key here.")
+                .addText((text) => {
+                    text
+                        .setPlaceholder("Enter License Key")
+                        .setValue(this.plugin.settings.license_key)
+                        .onChange(async (value: string) => {
+                            this.plugin.settings.license_key = value;
+                        }).inputEl.style.width = "100%"; // Set the width to full length
+                })
+                .setDesc("Click to activate your license.")
+                .addButton((button) => {
+                    button
+                        .setButtonText("Activate")
+                        .setClass("activate-button")
+                        .onClick(async (evt: MouseEvent) => {
+                            const license = this.plugin.settings.license_key;
+                            const hash_resp = await this.activate_license(license);
+                            if (hash_resp.status) {
+                                this.plugin.settings.license_hash = hash_resp.hash;
+                                new Notice("License Activated!");
+                            }
+                            await this.plugin.saveSettings();
+                            await this.plugin.loadSettings();
+                            this.display();
+                        });
+                });
+
+            return;
+        }
+
         const llm_provider_options = {
             openai: {
                 "gpt-4-turbo": { name: "gpt-4-turbo", context_window: 128000 },

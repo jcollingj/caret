@@ -1,6 +1,6 @@
 {
     "name": "caret",
-    "version": "0.2.8",
+    "version": "0.2.9",
     "description": "This is caret",
     "main": "main.js",
     "scripts": {
@@ -24,6 +24,7 @@
     "dependencies": {
         "@bundled-es-modules/pdfjs-dist": "^3.6.172-alpha.1",
         "@codemirror/language": "^6.10.1",
+        "csv-parse": "^5.5.5",
         "dotenv": "^16.4.5",
         "fuse.js": "^7.0.0",
         "groq-sdk": "^0.3.3",
@@ -32,6 +33,7 @@
         "ollama": "^0.5.0",
         "openai": "^4.42.0",
         "pdf-lib": "^1.17.1",
+        "uuid": "^9.0.1",
         "xml2js": "^0.6.2"
     }
 }
