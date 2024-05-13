@@ -1836,11 +1836,17 @@ export default class CaretPlugin extends Plugin {
             }
         }
 
-        if (this.settings.llm_provider === "openai" || "groq") {
+        if (this.settings.llm_provider === "openai" || this.settings.llm_provider === "groq") {
             for await (const part of stream) {
                 const delta_content = part.choices[0]?.delta.content || "";
                 const current_text = node.text;
                 node.setText(`${current_text}${delta_content}`);
+            }
+        }
+        if (this.settings.llm_provider === "ollama") {
+            for await (const part of stream) {
+                const current_text = node.text;
+                node.setText(`${current_text}${part.message.content}`);
             }
         }
     }
