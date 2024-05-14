@@ -315,6 +315,19 @@ export class InsertNoteModal extends Modal {
     }
 }
 
+interface Models {
+    name: string;
+    context_window: number;
+    function_calling: boolean;
+    vision: boolean;
+    streaming: boolean;
+}
+interface CustomModels extends Models {
+    endpoint: string;
+    api_key: string;
+    known_provider: string;
+}
+
 interface CaretPluginSettings {
     model: string;
     llm_provider: string;
@@ -323,6 +336,8 @@ interface CaretPluginSettings {
     context_window: number;
     license_key: string;
     license_hash: string;
+    custom_endpoints: { [model: string]: CustomModels };
+    system_prompt: string;
 }
 
 const DEFAULT_SETTINGS: CaretPluginSettings = {
@@ -333,6 +348,8 @@ const DEFAULT_SETTINGS: CaretPluginSettings = {
     context_window: 0,
     license_key: "",
     license_hash: "",
+    custom_endpoints: {},
+    system_prompt: "",
 };
 
 export const VIEW_NAME_SIDEBAR_CHAT = "sidebar-caret";
@@ -707,6 +724,264 @@ class FullPageChat extends ItemView {
         // Cleanup logic if necessary
     }
 }
+class CustomModelModal extends Modal {
+    model_id: string = "";
+    model_name: string = "";
+    streaming: boolean = true;
+    vision: boolean = false;
+    function_calling: boolean = false;
+    context_window: number = 0;
+    url: string = "";
+    api_key: string = "";
+    plugin: any;
+    known_provider: string = "";
+
+    constructor(app: App, plugin: any) {
+        super(app);
+        this.plugin = plugin;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+
+        contentEl.createEl("h2", { text: "Add Custom Model" });
+        contentEl.createEl("div", { text: "Note: The model needs to support the OpenAI spec.", cls: "callout" });
+        contentEl.createEl("div", {
+            text: "Note: The endpoint needs to support CORS. This is experimental and might require additional CORS settings to be added to Caret. Let me know!",
+            cls: "callout",
+        });
+
+        new Setting(contentEl)
+            .setName("Model ID")
+            .setDesc("This is the model. This is the value for the model parameter that will be sent to the endpoint.")
+            .addText((text) => {
+                text.setValue(this.model_id).onChange((value) => {
+                    this.model_id = value;
+                });
+            });
+
+        new Setting(contentEl)
+            .setName("Model Name")
+            .setDesc("This is the human-friendly name only used for displaying.")
+            .addText((text) => {
+                text.setValue(this.model_name).onChange((value) => {
+                    this.model_name = value;
+                });
+            });
+
+        new Setting(contentEl)
+            .setName("Vision")
+            .setDesc("Not used currently, will be used to know if the model can process pictures.")
+            .addToggle((toggle) => {
+                toggle.setValue(this.vision).onChange((value) => {
+                    this.vision = value;
+                });
+            });
+        new Setting(contentEl)
+            .setName("Function Calling")
+            .setDesc("Does the model support function calling?")
+            .addToggle((toggle) => {
+                toggle.setValue(this.function_calling).onChange((value) => {
+                    this.function_calling = value;
+                });
+            });
+
+        new Setting(contentEl)
+            .setName("Context Size")
+            .setDesc("You can normally pull this out of the Hugging Face repo, the config.json.")
+            .addText((text) => {
+                text.setValue(this.context_window.toString()).onChange((value) => {
+                    this.context_window = parseInt(value);
+                });
+            });
+
+        new Setting(contentEl)
+            .setName("Custom Endpoint")
+            .setDesc("This is where the model is located. It can be a remote URL or a server URL running locally.")
+            .addText((text) => {
+                text.setValue(this.url).onChange((value) => {
+                    this.url = value;
+                });
+            });
+
+        new Setting(contentEl)
+            .setName("API Key")
+            .setDesc("This is the API key required to access the model.")
+            .addText((text) => {
+                text.setValue(this.api_key).onChange((value) => {
+                    this.api_key = value;
+                });
+            });
+
+        new Setting(contentEl)
+            .setName("Known Provider")
+            .setDesc("Select this if it's a known endpoint like Ollama.")
+            .addDropdown((dropdown) => {
+                dropdown.addOption("ollama", "Ollama");
+                dropdown.setValue(this.known_provider).onChange((value) => {
+                    this.known_provider = value;
+                });
+            });
+        new Setting(contentEl).addButton((button) => {
+            button.setButtonText("Submit").onClick(async () => {
+                const settings: CaretPluginSettings = this.plugin.settings;
+                const parsed_context_window = parseInt(this.context_window.toString());
+
+                if (!this.model_name || this.model_name.trim() === "") {
+                    new Notice("Model name must exist");
+                    console.error("Validation Error: Model name must exist");
+                    return;
+                }
+
+                if (
+                    (!this.url || this.url.trim() === "") &&
+                    (!this.known_provider || this.known_provider.trim() === "")
+                ) {
+                    new Notice("Either endpoint or known provider must be set");
+                    console.error("Validation Error: Either endpoint or known provider must be set");
+                    return;
+                }
+
+                if (!this.model_id || this.model_id.trim() === "") {
+                    new Notice("Model ID must have a value");
+                    console.error("Validation Error: Model ID must have a value");
+                    return;
+                }
+
+                if (isNaN(parsed_context_window)) {
+                    new Notice("Context window must be a number");
+                    console.error("Validation Error: Context window must be a number");
+                    return;
+                }
+                const new_model: CustomModels = {
+                    name: this.model_name,
+                    context_window: this.context_window,
+                    function_calling: this.function_calling, // Assuming default value as it's not provided in the form
+                    vision: this.vision,
+                    streaming: true,
+                    endpoint: this.url,
+                    api_key: this.api_key,
+                    known_provider: this.known_provider === "ollama" ? "ollama" : "",
+                };
+
+                settings.custom_endpoints[this.model_id] = new_model;
+                console.log("Clicking add here");
+                console.log(settings);
+
+                await this.plugin.saveSettings();
+                // await this.plugin.loadSettings();
+
+                console.log({
+                    model_id: this.model_id,
+                    model_name: this.model_name,
+                    streaming: this.streaming,
+                    vision: this.vision,
+                    context_window: this.context_window,
+                    url: this.url,
+                    api_key: this.api_key,
+                    known_provider: this.known_provider,
+                });
+
+                this.close();
+            });
+        });
+    }
+
+    onClose() {
+        const { contentEl } = this;
+        contentEl.empty();
+    }
+}
+
+class RemoveCustomModelModal extends Modal {
+    plugin: any;
+
+    constructor(app: App, plugin: any) {
+        super(app);
+        this.plugin = plugin;
+    }
+
+    onOpen() {
+        const { contentEl, modalEl } = this;
+        contentEl.empty();
+        contentEl.createEl("h2", { text: "Remove Custom Model", cls: "insert-file-header" });
+
+        // Set the width of the modal
+        modalEl.style.width = "800px"; // Adjust the width as needed
+
+        const table = contentEl.createEl("table", { cls: "custom-models-table" });
+        const headerRow = table.createEl("tr");
+        headerRow.createEl("th", { text: "Name" });
+        headerRow.createEl("th", { text: "Context Window" });
+        headerRow.createEl("th", { text: "URL" });
+        headerRow.createEl("th", { text: "Action" });
+
+        const custom_models: { [key: string]: CustomModels } = this.plugin.settings.custom_endpoints;
+
+        for (const [model_id, model] of Object.entries(custom_models)) {
+            const row = table.createEl("tr");
+
+            row.createEl("td", { text: model.name });
+            row.createEl("td", { text: model.context_window.toString() });
+            row.createEl("td", { text: model.endpoint });
+
+            const deleteButtonContainer = row.createEl("td", { cls: "delete-btn-container" });
+            const deleteButton = deleteButtonContainer.createEl("button", { text: "Delete", cls: "mod-warning" });
+            deleteButton.addEventListener("click", async () => {
+                delete custom_models[model_id];
+                await this.plugin.saveSettings();
+                this.onOpen(); // Refresh the modal to reflect changes
+            });
+        }
+
+        // Apply minimum width to contentEl
+        contentEl.style.minWidth = "600px";
+    }
+
+    onClose() {
+        const { contentEl } = this;
+        contentEl.empty();
+    }
+}
+
+class SystemPromptModal extends Modal {
+    plugin: any;
+    system_prompt: string = "";
+
+    constructor(app: App, plugin: any) {
+        super(app);
+        this.plugin = plugin;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+
+        contentEl.createEl("h2", { text: "System Prompt" });
+
+        const textArea = contentEl.createEl("textarea", {
+            cls: "system-prompt-textarea",
+            text: this.plugin.settings.system_prompt || "",
+        });
+        textArea.style.height = "400px";
+        textArea.style.width = "100%";
+
+        const submitButton = contentEl.createEl("button", { text: "Submit", cls: "mod-cta" });
+        submitButton.addEventListener("click", async () => {
+            this.plugin.settings.system_prompt = textArea.value;
+            new Notice("System prompt updated");
+            await this.plugin.saveSettings();
+            await this.plugin.loadSettings();
+            this.close();
+        });
+    }
+
+    onClose() {
+        const { contentEl } = this;
+        contentEl.empty();
+    }
+}
 
 export default class CaretPlugin extends Plugin {
     settings: CaretPluginSettings;
@@ -728,13 +1003,35 @@ export default class CaretPlugin extends Plugin {
         }
 
         this.addSettingTab(new CaretSettingTab(this.app, this));
+        // this.addCommand({
+        //     id: "patch-menu",
+        //     name: "Patch Menu",
+        //     callback: async () => {
+        //         this.patchCanvasMenu();
+        //     },
+        // });
         this.addCommand({
-            id: "patch-menu",
-            name: "Patch Menu",
-            callback: async () => {
-                this.patchCanvasMenu();
+            id: "add-custom-models",
+            name: "Add Custom Models",
+            callback: () => {
+                new CustomModelModal(this.app, this).open();
             },
         });
+        this.addCommand({
+            id: "remove-custom-models",
+            name: "Remove Custom Models",
+            callback: () => {
+                new RemoveCustomModelModal(this.app, this).open();
+            },
+        });
+        this.addCommand({
+            id: "set-system-prompt",
+            name: "Set System Prompt",
+            callback: () => {
+                new SystemPromptModal(this.app, this).open();
+            },
+        });
+
         this.registerEvent(this.app.workspace.on("layout-change", () => {}));
         const that = this;
 
@@ -764,7 +1061,7 @@ export default class CaretPlugin extends Plugin {
                 const path = "caret/chats";
                 const folder = this.app.vault.getFolderByPath(path);
                 console.log(this.app);
-                console.log(this.app.vault.getConfig());
+                // console.log(this.app.vault.getConfig());
 
                 if (currentLeaf?.view.getViewType() === "canvas") {
                     const canvasView = currentLeaf.view;
@@ -803,10 +1100,12 @@ export default class CaretPlugin extends Plugin {
                     const canvasView = currentLeaf.view;
                     const canvas = (canvasView as any).canvas;
                     const selection = canvas.selection;
+                    let average_x = 0;
                     let average_y = 0;
                     let average_height = 0;
                     let average_width = 0;
-                    let max_x = 0;
+
+                    let total_x = 0;
                     let total_y = 0;
                     let count = 0;
                     let total_height = 0;
@@ -814,14 +1113,13 @@ export default class CaretPlugin extends Plugin {
                     let all_text = "";
                     for (const obj of selection) {
                         const { x, y, height, width } = obj;
-                        max_x = Math.max(max_x, x);
+                        total_x += x;
                         total_y += y;
                         total_height += height;
                         total_width += width;
                         count++;
                         if ("text" in obj) {
                             const { text } = obj;
-
                             all_text += text + "\n";
                         } else if ("filePath" in obj) {
                             let { filePath } = obj;
@@ -836,51 +1134,61 @@ export default class CaretPlugin extends Plugin {
                             }
                         }
                     }
+
+                    average_x = count > 0 ? total_x / count : 0;
                     average_y = count > 0 ? total_y / count : 0;
-                    average_height = count > 0 ? total_height / count : 0;
-                    average_width = count > 0 ? total_width / count : 0;
+                    average_height = count > 0 ? Math.max(200, total_height / count) : 200;
+                    average_width = count > 0 ? Math.max(200, total_width / count) : 200;
 
                     // This handles the model ---
                     // Create a modal with a text input and a submit button
                     const modal = new Modal(this.app);
                     modal.contentEl.createEl("h1", { text: "Canvas Prompt" });
                     const container = modal.contentEl.createDiv({ cls: "flex-col" });
-                    const textArea = container.createEl("textarea", {
+                    const text_area = container.createEl("textarea", {
                         placeholder: "",
                         cls: "w-full mb-2",
                     });
-                    const submitButton = container.createEl("button", { text: "Submit" });
-                    submitButton.onclick = async () => {
+                    const submit_button = container.createEl("button", { text: "Submit" });
+                    submit_button.onclick = async () => {
                         modal.close();
                         const prompt = `
                         Please do the following:
-                        ${textArea.value}
+                        ${text_area.value}
 
                         Given this content:
                         ${all_text}
                         `;
                         const conversation: Message[] = [{ role: "user", content: prompt }];
+                        // Create the text node on the canvas
+                        const text_node_config = {
+                            pos: { x: average_x + 50, y: average_y }, // Position on the canvas
+                            size: { width: average_width, height: average_height }, // Size of the text box
+                            position: "center", // This might relate to text alignment
+                            text: "", // Text content from input
+                            save: true, // Save this node's state
+                            focus: true, // Focus and start editing immediately
+                        };
+                        const node = canvas.createTextNode(text_node_config);
+                        const node_id = node.id;
+                        // TODO - Fix this later
+                        // const node_interaction = await this.get_viewport_node(node_id);
+                        // if (node_interaction) {
+                        //     console.log("Valid viewport node");
+                        //     console.log(node_interaction);
+                        //     setTimeout(() => {
+                        //         node_interaction.zoomToSelection();
+                        //     }, 400);
+                        // }
+                        // console.log({ node_interaction });
 
-                        const message: Message = await this.llm_call(
+                        const stream: Message = await this.llm_call_streaming(
                             this.settings.llm_provider,
                             this.settings.model,
                             conversation
                         );
-                        const content = message.content;
-                        const textNodeConfig = {
-                            pos: { x: max_x + 50, y: average_y }, // Position on the canvas
-                            size: { width: average_width, height: average_height }, // Size of the text box
-                            position: "center", // This might relate to text alignment
-                            text: content, // Text content from input
-                            save: true, // Save this node's state
-                            focus: true, // Focus and start editing immediately
-                        };
 
-                        // Create the text node on the canvas
-                        const node = canvas.createTextNode(textNodeConfig);
-                        const node_id = node.id;
-                        node.color = "6";
-                        node.zoomToSelection();
+                        await this.update_node_content(node_id, stream);
                     };
                     modal.open();
                 }
@@ -1363,6 +1671,38 @@ export default class CaretPlugin extends Plugin {
         }
         this.highlight_lineage();
     }
+    // async get_viewport_node(node_id: string): Promise<ViewportNode | undefined> {
+    //     console.log("Running in get viewport node");
+    //     const canvas_view = await this.get_current_canvas_view();
+    //     // @ts-ignore
+    //     const canvas = canvas_view.canvas;
+    //     let viewport_nodes: ViewportNode[] = [];
+    //     let initial_viewport_children = canvas.nodeIndex.data.children;
+    //     if (initial_viewport_children.length > 1) {
+    //         let type_nodes = "nodes";
+
+    //         // If there is more childen then use this path.
+    //         if (initial_viewport_children[0] && "children" in initial_viewport_children[0]) {
+    //             type_nodes = "children";
+    //         }
+    //         if (type_nodes === "children") {
+    //             for (let i = 0; i < initial_viewport_children.length; i++) {
+    //                 const nodes_list = initial_viewport_children[i].children;
+
+    //                 nodes_list.forEach((node: ViewportNode) => {
+    //                     viewport_nodes.push(node);
+    //                 });
+    //             }
+    //         }
+    //         if (type_nodes === "nodes") {
+    //             for (let i = 0; i < initial_viewport_children.length; i++) {
+    //                 const viewport_node = initial_viewport_children[i];
+    //                 viewport_nodes.push(viewport_node);
+    //             }
+    //         }
+    //     }
+    //     console.log(viewport_nodes);
+    // }
     async parseXml(xmlString: string): Promise<any> {
         try {
             const result = await new Promise((resolve, reject) => {
@@ -1639,6 +1979,28 @@ export default class CaretPlugin extends Plugin {
         rep_block_content = rep_block_content.trim();
         return rep_block_content;
     }
+    async get_current_node(canvas: Canvas, node_id: string) {
+        await canvas.requestSave(true);
+        const nodes_iterator = canvas.nodes.values();
+        let node = null;
+        for (const node_obj of nodes_iterator) {
+            if (node_obj.id === node_id) {
+                node = node_obj;
+                break;
+            }
+        }
+        return node;
+    }
+    async get_current_canvas_view() {
+        const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
+        // @ts-ignore
+        if (!canvas_view || !canvas_view.canvas) {
+            return;
+        }
+        // @ts-ignore
+        const canvas = canvas_view.canvas;
+        return canvas_view;
+    }
 
     async sparkle(node_id: string) {
         const userRegex = /<role>User<\/role>/i;
@@ -1652,20 +2014,7 @@ export default class CaretPlugin extends Plugin {
         // @ts-ignore
         const canvas = canvas_view.canvas;
 
-        async function getCurrentNode(canvas, node_id) {
-            await canvas.requestSave(true);
-            const nodes_iterator = canvas.nodes.values();
-            let node = null;
-            for (const node_obj of nodes_iterator) {
-                if (node_obj.id === node_id) {
-                    node = node_obj;
-                    break;
-                }
-            }
-            return node;
-        }
-
-        let node = await getCurrentNode(canvas, node_id);
+        let node = await this.get_current_node(canvas, node_id);
         if (!node) {
             console.error("Node not found with ID:", node_id);
             return;
@@ -1677,7 +2026,7 @@ export default class CaretPlugin extends Plugin {
             const modified_text = `<role>user</role>\n${current_text}`;
             node.setText(modified_text);
             await new Promise((resolve) => setTimeout(resolve, 200));
-            node = await getCurrentNode(canvas, node_id); // Re-fetch the node to get the latest data
+            node = await this.get_current_node(canvas, node_id); // Re-fetch the node to get the latest data
         }
         console.log({ node });
 
@@ -1980,6 +2329,12 @@ export default class CaretPlugin extends Plugin {
         }
     }
     async llm_call_streaming(provider: string, model: string, conversation: any[]) {
+        if (this.settings.system_prompt && this.settings.system_prompt.length > 0) {
+            conversation.unshift({
+                role: "system",
+                content: this.settings.system_prompt,
+            });
+        }
         if (provider === "ollama") {
             let model_param = model;
             new Notice("Calling ollama");
@@ -2037,6 +2392,51 @@ export default class CaretPlugin extends Plugin {
                 return stream;
             } catch (error) {
                 console.error("Error fetching chat completion from OpenAI:", error);
+                new Notice(error.message);
+                throw error;
+            }
+        } else if (provider == "custom") {
+            new Notice("Calling Custom Client");
+            const custom_model = this.settings.model;
+            const model_settings = this.settings.custom_endpoints[custom_model];
+            const custom_api_key = model_settings.api_key;
+            const custom_endpoint = model_settings.endpoint;
+
+            const custom_client = new OpenAI({
+                apiKey: custom_api_key,
+                baseURL: custom_endpoint,
+                dangerouslyAllowBrowser: true,
+            });
+            // custom_client.baseURL = basePath;
+            if (custom_api_key) {
+                const error_message = "API Key not configured for custom model. Restart the app if you just added it!";
+                new Notice(error_message);
+                throw new Error(error_message);
+            }
+
+            if (!custom_endpoint) {
+                const error_message = "Custom endpoint not configured. Restart the app if you just added it!";
+                new Notice(error_message);
+                throw new Error(error_message);
+            }
+
+            if (!custom_client) {
+                const error_message = "Custom client not initialized properly. Restart the app if you just added it!";
+                new Notice(error_message);
+                throw new Error(error_message);
+            }
+
+            const params = {
+                messages: conversation,
+                model: model,
+                stream: true,
+            };
+
+            try {
+                const stream = await custom_client.chat.completions.create(params);
+                return stream;
+            } catch (error) {
+                console.error("Error streaming from Custom Client:", error);
                 new Notice(error.message);
                 throw error;
             }
@@ -2245,6 +2645,13 @@ export default class CaretPlugin extends Plugin {
     }
 }
 
+type ModelDropDownSettings = {
+    openai: string;
+    groq: string;
+    ollama: string;
+    custom?: string; // Make 'custom' optional
+};
+
 class CaretSettingTab extends PluginSettingTab {
     plugin: CaretPlugin;
 
@@ -2323,25 +2730,119 @@ class CaretSettingTab extends PluginSettingTab {
             return;
         }
 
-        const llm_provider_options = {
+        let llm_provider_options: {
+            [key: string]: {
+                [model: string]: Models;
+            };
+        } = {
             openai: {
-                "gpt-4-turbo": { name: "gpt-4-turbo", context_window: 128000 },
-                "gpt-3.5-turbo": { name: "gpt-3.5-turbo", context_window: 128000 },
-                "gpt-4o": { name: "gpt-4o", context_window: 128000 },
+                "gpt-4-turbo": {
+                    name: "gpt-4-turbo",
+                    context_window: 128000,
+                    function_calling: true,
+                    vision: true,
+                    streaming: true,
+                },
+                "gpt-3.5-turbo": {
+                    name: "gpt-3.5-turbo",
+                    context_window: 128000,
+                    function_calling: true,
+                    vision: true,
+                    streaming: true,
+                },
+                "gpt-4o": {
+                    name: "gpt-4o",
+                    context_window: 128000,
+                    function_calling: true,
+                    vision: true,
+                    streaming: true,
+                },
             },
             groq: {
-                "llama3-8b-8192": { name: "Llama 8B", context_window: 8192 },
-                "llama3-70b-8192": { name: "Llama 70B", context_window: 8192 },
-                "mixtral-8x7b-32768": { name: "Mixtral 8x7b", context_window: 32768 },
-                "gemma-7b-it": { name: "Gemma 7B", context_window: 8192 },
+                "llama3-8b-8192": {
+                    name: "Llama 8B",
+                    context_window: 8192,
+                    function_calling: false,
+                    vision: false,
+                    streaming: true,
+                },
+                "llama3-70b-8192": {
+                    name: "Llama 70B",
+                    context_window: 8192,
+                    function_calling: false,
+                    vision: false,
+                    streaming: true,
+                },
+                "mixtral-8x7b-32768": {
+                    name: "Mixtral 8x7b",
+                    context_window: 32768,
+                    function_calling: false,
+                    vision: false,
+                    streaming: true,
+                },
+                "gemma-7b-it": {
+                    name: "Gemma 7B",
+                    context_window: 8192,
+                    function_calling: false,
+                    vision: false,
+                    streaming: true,
+                },
             },
             ollama: {
-                llama3: { name: "llama3 8B", context_window: 8192 },
-                phi3: { name: "Phi-3 3.8B", context_window: 8192 },
-                mistral: { name: "Mistral 7B", context_window: 32768 },
-                gemma: { name: "Gemma 7B", context_window: 8192 },
+                llama3: {
+                    name: "llama3 8B",
+                    context_window: 8192,
+                    function_calling: false,
+                    vision: false,
+                    streaming: true,
+                },
+                phi3: {
+                    name: "Phi-3 3.8B",
+                    context_window: 8192,
+                    function_calling: false,
+                    vision: false,
+                    streaming: true,
+                },
+                mistral: {
+                    name: "Mistral 7B",
+                    context_window: 32768,
+                    function_calling: false,
+                    vision: false,
+                    streaming: true,
+                },
+                gemma: {
+                    name: "Gemma 7B",
+                    context_window: 8192,
+                    function_calling: false,
+                    vision: false,
+                    streaming: true,
+                },
             },
+            custom: {},
         };
+        const custom_endpoints = this.plugin.settings.custom_endpoints;
+        let model_drop_down_settings: ModelDropDownSettings = {
+            openai: "OpenAI",
+            groq: "Groq",
+            ollama: "ollama",
+        };
+
+        console.log(custom_endpoints);
+
+        if (Object.keys(custom_endpoints).length > 0) {
+            for (const [key, value] of Object.entries(custom_endpoints)) {
+                if (value.known_provider) {
+                    if (!llm_provider_options[value.known_provider]) {
+                        llm_provider_options[value.known_provider] = {};
+                    }
+                    llm_provider_options[value.known_provider][key] = value;
+                } else {
+                    llm_provider_options.custom[key] = value;
+                }
+            }
+            model_drop_down_settings["custom"] = "Custom";
+        }
+        console.log({ llm_provider_options });
 
         let context_window = null;
         try {
@@ -2377,11 +2878,7 @@ class CaretSettingTab extends PluginSettingTab {
             .setDesc("")
             .addDropdown((dropdown) => {
                 dropdown
-                    .addOptions({
-                        openai: "OpenAI",
-                        groq: "Groq",
-                        ollama: "ollama",
-                    })
+                    .addOptions(model_drop_down_settings)
                     .setValue(this.plugin.settings.llm_provider)
                     .onChange(async (provider) => {
                         this.plugin.settings.llm_provider = provider;

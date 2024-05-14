@@ -118,3 +118,41 @@
     background-color: #f0f0f0; /* Optional: light background color for better visibility */
     border-radius: 4px;
 }
+.custom-models-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.custom-models-table th,
+.custom-models-table td {
+    text-align: left;
+    padding: 8px;
+    border: 1px solid #ddd;
+}
+
+.custom-models-table th {
+    background-color: #f2f2f2;
+}
+
+.custom-models-table tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+.custom-models-table tr:hover {
+    background-color: #ddd;
+}
+
+.mod-warning {
+    color: red;
+    font-weight: bold;
+}
+
+
+
+.system-prompt-textarea {
+        width: 100%;
+        height: 400px;
+        resize: vertical;
+}
+
+
