@@ -7,6 +7,7 @@ import ollama from "ollama/browser";
 import pdfjs from "@bundled-es-modules/pdfjs-dist/build/pdf";
 import OpenAI from "openai";
 import Groq from "groq-sdk";
+import Anthropic from "@anthropic-ai/sdk";
 import { around } from "monkey-around";
 import { Canvas, ViewportNode, Message, Node, Edge, EdgeDirection } from "./types";
 import {
@@ -333,6 +334,7 @@ interface CaretPluginSettings {
     llm_provider: string;
     openai_api_key: string;
     groq_api_key: string;
+    anthropic_api_key: string;
     context_window: number;
     license_key: string;
     license_hash: string;
@@ -350,6 +352,7 @@ const DEFAULT_SETTINGS: CaretPluginSettings = {
     license_hash: "",
     custom_endpoints: {},
     system_prompt: "",
+    anthropic_api_key: "",
 };
 
 export const VIEW_NAME_SIDEBAR_CHAT = "sidebar-caret";
@@ -990,6 +993,7 @@ export default class CaretPlugin extends Plugin {
     color_picker_open_on_last_click: boolean = false;
     openai_client: OpenAI;
     groq_client: Groq;
+    anthropic_client: Anthropic;
     encoder: any;
 
     async onload() {
@@ -1000,6 +1004,11 @@ export default class CaretPlugin extends Plugin {
         }
         if (this.settings.groq_api_key) {
             this.groq_client = new Groq({ apiKey: this.settings.groq_api_key, dangerouslyAllowBrowser: true });
+        }
+        if (this.settings.anthropic_api_key) {
+            this.anthropic_client = new Anthropic({
+                apiKey: this.settings.anthropic_api_key, // This is the default and can be omitted
+            });
         }
 
         this.addSettingTab(new CaretSettingTab(this.app, this));
@@ -2223,7 +2232,11 @@ export default class CaretPlugin extends Plugin {
         }
         node.width = 510;
 
-        if (this.settings.llm_provider === "openai" || this.settings.llm_provider === "groq") {
+        if (
+            this.settings.llm_provider === "openai" ||
+            this.settings.llm_provider === "groq" ||
+            this.settings.llm_provider === "custom"
+        ) {
             for await (const part of stream) {
                 const delta_content = part.choices[0]?.delta.content || "";
 
@@ -2392,6 +2405,29 @@ export default class CaretPlugin extends Plugin {
                 return stream;
             } catch (error) {
                 console.error("Error fetching chat completion from OpenAI:", error);
+                new Notice(error.message);
+                throw error;
+            }
+        } else if (provider == "anthropic") {
+            if (!this.anthropic_client) {
+                const error_message = "API key not configured for Anthropic. Restart the app if you just added it!";
+                new Notice(error_message);
+                throw new Error(error_message);
+            }
+            new Notice("Calling Anthropic");
+            // const max_tokens = this.settings.context_window -
+
+            const params = {
+                messages: conversation,
+                model: model,
+                stream: true,
+                max_tokens: 4096,
+            };
+            try {
+                const stream = await this.anthropic_client.messages.create(params);
+                return stream;
+            } catch (error) {
+                console.error("Error fetching chat completion from Anthropic:", error);
                 new Notice(error.message);
                 throw error;
             }
@@ -2649,6 +2685,7 @@ type ModelDropDownSettings = {
     openai: string;
     groq: string;
     ollama: string;
+    anthropic?: string;
     custom?: string; // Make 'custom' optional
 };
 
@@ -2758,6 +2795,29 @@ class CaretSettingTab extends PluginSettingTab {
                     streaming: true,
                 },
             },
+            // anthropic: {
+            //     "claude-3-opus-20240229": {
+            //         name: "Claude 3 Opus",
+            //         context_window: 200000,
+            //         function_calling: true,
+            //         vision: true,
+            //         streaming: true,
+            //     },
+            //     "claude-3-sonnet-20240229": {
+            //         name: "Claude 3 Sonnet",
+            //         context_window: 200000,
+            //         function_calling: true,
+            //         vision: true,
+            //         streaming: true,
+            //     },
+            //     "claude-3-haiku-20240307": {
+            //         name: "Claude 3 Haiku",
+            //         context_window: 200000,
+            //         function_calling: true,
+            //         vision: true,
+            //         streaming: true,
+            //     },
+            // },
             groq: {
                 "llama3-8b-8192": {
                     name: "Llama 8B",
@@ -2823,6 +2883,7 @@ class CaretSettingTab extends PluginSettingTab {
         const custom_endpoints = this.plugin.settings.custom_endpoints;
         let model_drop_down_settings: ModelDropDownSettings = {
             openai: "OpenAI",
+            // anthropic: "Antropic",
             groq: "Groq",
             ollama: "ollama",
         };
@@ -2968,24 +3029,34 @@ class CaretSettingTab extends PluginSettingTab {
                     });
                 text.inputEl.addClass("hidden-value-unsecure");
             });
+        // new Setting(containerEl)
+        //     .setName("Anthropic API Key")
+        //     .setDesc("")
+        //     .addText((text) => {
+        //         text.setPlaceholder("Anthropic API Key")
+        //             .setValue(this.plugin.settings.anthropic_api_key)
+        //             .onChange(async (value: string) => {
+        //                 this.plugin.settings.anthropic_api_key = value;
+        //                 await this.plugin.saveSettings();
+        //                 await this.plugin.loadSettings();
+        //             });
+        //         text.inputEl.addClass("hidden-value-unsecure");
+        //     });
         new Setting(containerEl)
             .setName("Reload after adding API Keys!")
             .setDesc(
                 "After you added API keys for the first time you will need to reload the plugin for those changes to take effect. \n This only needs to be done the first time or when you change your keys."
             );
 
-        new Setting(containerEl)
-            .setName("Save Settings")
-            .setDesc("Settings save automatically. But you can also click this to be extra sure they saved.")
-            .addButton((button) => {
-                button
-                    .setButtonText("Save")
-                    .setClass("save-button")
-                    .onClick(async (evt: MouseEvent) => {
-                        await this.plugin.saveSettings();
-                        await this.plugin.loadSettings();
-                        new Notice("Settings Saved!");
-                    });
-            });
+        new Setting(containerEl).setName("Save Settings").addButton((button) => {
+            button
+                .setButtonText("Save")
+                .setClass("save-button")
+                .onClick(async (evt: MouseEvent) => {
+                    await this.plugin.saveSettings();
+                    await this.plugin.loadSettings();
+                    new Notice("Settings Saved!");
+                });
+        });
     }
 }

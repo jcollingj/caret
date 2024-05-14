@@ -1,6 +1,6 @@
 {
     "name": "caret",
-    "version": "0.2.17",
+    "version": "0.2.18",
     "description": "This is caret",
     "main": "main.js",
     "scripts": {
@@ -22,6 +22,7 @@
         "typescript": "4.7.4"
     },
     "dependencies": {
+        "@anthropic-ai/sdk": "^0.20.9",
         "@bundled-es-modules/pdfjs-dist": "^3.6.172-alpha.1",
         "@codemirror/language": "^6.10.1",
         "csv-parse": "^5.5.5",
