@@ -1,6 +1,6 @@
 {
     "name": "caret",
-    "version": "0.2.16",
+    "version": "0.2.17",
     "description": "This is caret",
     "main": "main.js",
     "scripts": {

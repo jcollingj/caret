@@ -2838,9 +2838,9 @@ class CaretSettingTab extends PluginSettingTab {
                     llm_provider_options[value.known_provider][key] = value;
                 } else {
                     llm_provider_options.custom[key] = value;
+                    model_drop_down_settings["custom"] = "Custom";
                 }
             }
-            model_drop_down_settings["custom"] = "Custom";
         }
         console.log({ llm_provider_options });
 
