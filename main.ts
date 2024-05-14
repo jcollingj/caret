@@ -568,7 +568,7 @@ class FullPageChat extends ItemView {
                 this.renderConversation();
             }
         }
-        if (this.plugin.settings.llm_provider === "openai" || "groq") {
+        if (this.plugin.settings.llm_provider === "openai" || "groq" || "custom") {
             for await (const part of stream_response) {
                 const delta_content = part.choices[0]?.delta.content || "";
                 this.conversation[this.conversation.length - 1].content += delta_content;
