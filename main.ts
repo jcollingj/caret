@@ -339,6 +339,7 @@ interface LLMProviderOptions {
 }
 
 interface CaretPluginSettings {
+    caret_version: string;
     model: string;
     llm_provider: string;
     openai_api_key: string;
@@ -355,6 +356,7 @@ interface CaretPluginSettings {
 }
 
 const DEFAULT_SETTINGS: CaretPluginSettings = {
+    caret_version: "0.2.22",
     model: "gpt-4-turbo",
     llm_provider: "openai",
     openai_api_key: "",
@@ -2994,13 +2996,13 @@ version: 1
                                 temperature: prompt_temperature,
                             };
                             console.log({ sparkle_config });
-                            const assistant_node = await this.sparkle(user_node.id, system_prompt, sparkle_config);
-                            current_node = assistant_node;
                             if (prompt_delay > 0) {
                                 new Notice(`Waiting for ${prompt_delay} seconds...`);
                                 await new Promise((resolve) => setTimeout(resolve, prompt_delay * 1000));
                                 new Notice(`Done waiting for ${prompt_delay} seconds.`);
                             }
+                            const assistant_node = await this.sparkle(user_node.id, system_prompt, sparkle_config);
+                            current_node = assistant_node;
                         }
                     } else {
                         new Notice("Invalid Caret Prompt");
@@ -3721,6 +3723,10 @@ class CaretSettingTab extends PluginSettingTab {
                 ]
             ).map(([key, value]) => [key, value.name])
         );
+        // LLM Provider Settings
+        new Setting(containerEl)
+            // .setName("LLM Provider")
+            .setDesc(`Caret Version: ${this.plugin.settings.caret_version}`);
 
         // LLM Provider Settings
         new Setting(containerEl)
