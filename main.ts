@@ -1,10 +1,18 @@
+// @ts-ignore
+import pdfjs from "@bundled-es-modules/pdfjs-dist/build/pdf";
+import pdf_worker_code from "./workers/pdf.worker.js";
+
+// Create a Blob URL from the worker code
+const pdf_worker_blob = new Blob([pdf_worker_code], { type: "application/javascript" });
+const pdf_worker_url = URL.createObjectURL(pdf_worker_blob);
+pdfjs.GlobalWorkerOptions.workerSrc = pdf_worker_url;
+
 import { generateHashForUUID, validateUUIDHashPair, validate_license_key } from "./license_hashing";
 import Fuse from "fuse.js";
 import { encodingForModel } from "js-tiktoken";
 // @ts-ignore
 import ollama from "ollama/browser";
-// @ts-ignore
-import pdfjs from "@bundled-es-modules/pdfjs-dist/build/pdf";
+
 import OpenAI from "openai";
 import Groq from "groq-sdk";
 import Anthropic from "@anthropic-ai/sdk";
@@ -2582,9 +2590,9 @@ version: 1
         // Assuming this code is inside a method of your plugin class
         // TODO - Clean this up later
         // @ts-ignore
-        pdfjs.GlobalWorkerOptions.workerSrc = await this.app.vault.getResourcePath({
-            path: ".obsidian/plugins/caret/pdf.worker.js",
-        });
+        // pdfjs.GlobalWorkerOptions.workerSrc = await this.app.vault.getResourcePath({
+        //     path: ".obsidian/plugins/caret/pdf.worker.js",
+        // });
 
         // TODO - Clean this up later
         // @ts-ignore
@@ -3034,9 +3042,11 @@ version: 1
                 // const foundFile = files.find((file) => file.basename === file_name);
                 text = await this.extractTextFromPDF(file_name);
                 const pdf_tokens = this.encoder.encode(text);
-                if (pdf_tokens + convo_total_tokens > this.settings.context_window) {
-                    new Notice("Context window exceeded while reading a PDF. Excluding node");
-                    break;
+                const pdf_tokens_length = pdf_tokens.length;
+                if (pdf_tokens_length + convo_total_tokens > this.settings.context_window) {
+                    new Notice("Context window exceeded while reading a PDF.");
+                    new Notice("Not sending LLM call due to context window being exceeded.");
+                    return;
                 }
                 convo_total_tokens += pdf_tokens;
                 added_context += text;
