@@ -92,3 +92,9 @@ export type Edge = {
     fromSide: "left" | "right" | "top" | "bottom";
     toSide: "left" | "right" | "top" | "bottom";
 };
+
+export interface SparkleConfig {
+    model: string;
+    provider: string;
+    temperature: number;
+}

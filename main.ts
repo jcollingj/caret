@@ -9,7 +9,7 @@ import OpenAI from "openai";
 import Groq from "groq-sdk";
 import Anthropic from "@anthropic-ai/sdk";
 import { around } from "monkey-around";
-import { Canvas, ViewportNode, Message, Node, Edge, EdgeDirection } from "./types";
+import { Canvas, ViewportNode, Message, Node, Edge, SparkleConfig } from "./types";
 import {
     App,
     Editor,
@@ -324,6 +324,12 @@ interface CustomModels extends Models {
     known_provider: string;
 }
 
+interface LLMProviderOptions {
+    [key: string]: {
+        [model: string]: Models;
+    };
+}
+
 interface CaretPluginSettings {
     model: string;
     llm_provider: string;
@@ -335,21 +341,116 @@ interface CaretPluginSettings {
     license_hash: string;
     custom_endpoints: { [model: string]: CustomModels };
     system_prompt: string;
+    temperature: number;
+    llm_provider_options: LLMProviderOptions;
+    provider_dropdown_options: { [key: string]: string };
 }
 
 const DEFAULT_SETTINGS: CaretPluginSettings = {
-    model: "",
-    llm_provider: "",
+    model: "gpt-4-turbo",
+    llm_provider: "openai",
     openai_api_key: "",
     groq_api_key: "",
-    context_window: 0,
+    anthropic_api_key: "",
+    context_window: 128000,
     license_key: "",
     license_hash: "",
     custom_endpoints: {},
     system_prompt: "",
-    anthropic_api_key: "",
+    temperature: 1,
+    llm_provider_options: {
+        openai: {
+            "gpt-4-turbo": {
+                name: "gpt-4-turbo",
+                context_window: 128000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "gpt-3.5-turbo": {
+                name: "gpt-3.5-turbo",
+                context_window: 128000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "gpt-4o": {
+                name: "gpt-4o",
+                context_window: 128000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+        },
+        groq: {
+            "llama3-8b-8192": {
+                name: "Llama 8B",
+                context_window: 8192,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
+            "llama3-70b-8192": {
+                name: "Llama 70B",
+                context_window: 8192,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
+            "mixtral-8x7b-32768": {
+                name: "Mixtral 8x7b",
+                context_window: 32768,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
+            "gemma-7b-it": {
+                name: "Gemma 7B",
+                context_window: 8192,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
+        },
+        ollama: {
+            llama3: {
+                name: "llama3 8B",
+                context_window: 8192,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
+            phi3: {
+                name: "Phi-3 3.8B",
+                context_window: 8192,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
+            mistral: {
+                name: "Mistral 7B",
+                context_window: 32768,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
+            gemma: {
+                name: "Gemma 7B",
+                context_window: 8192,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
+        },
+        custom: {},
+    },
+    provider_dropdown_options: {
+        openai: "OpenAI",
+        groq: "Groq",
+        ollama: "Ollama",
+        custom: "Custom",
+    },
 };
-
 export const VIEW_NAME_SIDEBAR_CHAT = "sidebar-caret";
 class SidebarChat extends ItemView {
     constructor(leaf: WorkspaceLeaf) {
@@ -966,14 +1067,23 @@ class SystemPromptModal extends Modal {
     }
 }
 
+interface WorkflowPrompt {
+    model: string;
+    provider: string;
+    delay: string;
+    temperature: string;
+    prompt: string;
+}
+
 class LinearWorkflowEditor extends ItemView {
     plugin: any;
     file_path: string;
-    prompts: string[];
+    prompts: WorkflowPrompt[];
     workflow_name: string;
     system_prompt: string;
     prompt_container: HTMLDivElement;
     stored_file_name: string;
+    workflow_type: "linear" | "parallel";
 
     constructor(plugin: any, leaf: WorkspaceLeaf, file_path: string = "") {
         super(leaf);
@@ -985,31 +1095,52 @@ class LinearWorkflowEditor extends ItemView {
     }
 
     getViewType() {
-        return "linear-workflow";
+        return "workflow-editor";
     }
 
     getDisplayText() {
-        return "Linear Workflow Editor";
+        return "Workflow Editor";
     }
 
     async onOpen() {
         if (this.file_path) {
             const file = this.app.vault.getAbstractFileByPath(this.file_path);
             if (file) {
+                const front_matter = await this.plugin.get_frontmatter(file);
+                this.workflow_type = front_matter.caret_prompt;
                 const file_content = await this.app.vault.cachedRead(file);
                 this.workflow_name = file.name.replace(".md", "");
                 this.stored_file_name = file.name;
                 const xml_content = file_content.match(/```xml([\s\S]*?)```/)[1].trim();
                 const xml = await this.plugin.parseXml(xml_content);
                 const xml_prompts = xml.root.prompt;
+
                 for (let i = 0; i < xml_prompts.length; i++) {
-                    if (xml_prompts[i].trim().length > 0) {
-                        this.prompts.push(xml_prompts[i].trim());
+                    const prompt = xml_prompts[i]._.trim();
+                    const delay = parseInt(xml_prompts[i].$.delay) || 0;
+                    const model = xml_prompts[i].$.model || "default";
+                    const provider = xml_prompts[i].$.provider || "default";
+                    const temperature = parseFloat(xml_prompts[i].$.temperature) || this.plugin.settings.temperature;
+
+                    if (prompt.trim().length > 0) {
+                        this.prompts.push({
+                            model,
+                            provider,
+                            delay: delay.toString(),
+                            temperature: temperature.toString(),
+                            prompt,
+                        });
                     }
                 }
 
                 if (xml.root.system_prompt && xml.root.system_prompt.length > 0) {
-                    this.system_prompt = xml.root.system_prompt[0];
+                    console.log(xml.root.system_prompt);
+                    if (xml.root.system_prompt && xml.root.system_prompt[0] && xml.root.system_prompt[0]._) {
+                        this.system_prompt = xml.root.system_prompt[0]._.trim();
+                    } else {
+                        this.system_prompt = "";
+                    }
+                    console.log({ system_prompt: this.system_prompt });
                 } else {
                     this.system_prompt = "";
                 }
@@ -1045,18 +1176,18 @@ class LinearWorkflowEditor extends ItemView {
         this.add_system_prompt();
         if (this.prompts.length > 0) {
             for (let i = 0; i < this.prompts.length; i++) {
-                this.addPrompt(this.prompts[i], true, i + 1);
+                this.add_prompt(this.prompts[i], true, i);
             }
         } else {
-            this.addPrompt("");
+            this.add_prompt();
         }
 
         // Create a button to add new prompts
-        const buttonContainer = container.createEl("div", { cls: "button-container" });
+        const buttonContainer = container.createEl("div", { cls: "button-container bottom-screen-padding" });
 
         const addPromptButton = buttonContainer.createEl("button", { text: "Add New Prompt" });
         addPromptButton.addEventListener("click", () => {
-            this.addPrompt();
+            this.add_prompt();
         });
 
         // Create a save workflow button
@@ -1064,13 +1195,39 @@ class LinearWorkflowEditor extends ItemView {
         save_button.addEventListener("click", () => {
             if (this.workflow_name.length === 0) {
                 new Notice("Workflow must be named before saving");
-            } else if (this.prompts.length <= 1 && this.prompts[0].length <= 1) {
-                new Notice("There must be at least one prompt");
-            } else {
-                this.save_workflow();
+                return;
             }
+
+            for (let i = 0; i < this.prompts.length; i++) {
+                const prompt = this.prompts[i];
+                if (!prompt.model) {
+                    new Notice(`Prompt ${i + 1}: Model must have a value`);
+                    return;
+                }
+                if (!prompt.provider) {
+                    new Notice(`Prompt ${i + 1}: Provider must have a value`);
+                    return;
+                }
+                const delay = parseInt(prompt.delay, 10);
+                if (isNaN(delay) || delay < 0 || delay > 60) {
+                    new Notice(`Prompt ${i + 1}: Delay must be a number between 0 and 60`);
+                    return;
+                }
+                const temperature = parseFloat(prompt.temperature);
+                if (isNaN(temperature) || temperature < 0 || temperature > 2) {
+                    new Notice(`Prompt ${i + 1}: Temperature must be a float between 0 and 2`);
+                    return;
+                }
+                if (!prompt.prompt || prompt.prompt.length === 0) {
+                    new Notice(`Prompt ${i + 1}: Prompt must not be empty`);
+                    return;
+                }
+            }
+
+            this.save_workflow();
         });
     }
+
     async save_workflow() {
         const chat_folder_path = "caret/workflows";
         const chat_folder = this.app.vault.getAbstractFileByPath(chat_folder_path);
@@ -1078,26 +1235,28 @@ class LinearWorkflowEditor extends ItemView {
             await this.app.vault.createFolder(chat_folder_path);
         }
         const system_prompt_string = `
-<system_prompt>
+<system_prompt tag="placeholder_do_not_delete">
 ${this.plugin.escapeXml(this.system_prompt)}
 </system_prompt>
 `;
 
         let prompts_string = ``;
         for (let i = 0; i < this.prompts.length; i++) {
-            if (this.prompts[i].length === 0) {
+            if (this.prompts[i].prompt.length === 0) {
                 continue;
             }
-            const escaped_content = this.plugin.escapeXml(this.prompts[i]);
+            const escaped_content = this.plugin.escapeXml(this.prompts[i].prompt);
             prompts_string += `
-<prompt>
+<prompt model="${this.prompts[i].model || "default"}" provider="${this.prompts[i].provider || "default"}" delay="${
+                this.prompts[i].delay || "default"
+            }" temperature="${this.prompts[i].temperature || "default"}">
 ${escaped_content}
 </prompt>`.trim();
         }
 
         let file_content = `
 ---
-caret_prompt: linear
+caret_prompt: ${this.workflow_type}
 version: 1
 ---
 \`\`\`xml
@@ -1112,7 +1271,6 @@ ${prompts_string}
         let file_path = `${chat_folder_path}/${file_name}`;
         let old_file_path = `${chat_folder_path}/${this.stored_file_name}`;
         let file = await this.app.vault.getFileByPath(old_file_path);
-        console.log({ file_name, file_path, old_file_path });
 
         try {
             if (file) {
@@ -1128,10 +1286,46 @@ ${prompts_string}
             }
         } catch (error) {
             console.error("Failed to save chat:", error);
+            if (error.message.includes("File already exists")) {
+                new Notice("A workflow with that name already exists!");
+            } else {
+                console.error("Failed to save chat:", error);
+            }
         }
     }
 
     add_system_prompt(system_prompt: string = "") {
+        // Add a toggle switch for workflow type
+        const dropdown_container = this.prompt_container.createEl("div", {
+            cls: "dropdown-container",
+        });
+
+        dropdown_container.createEl("label", { text: "Workflow Type: ", cls: "dropdown-label" });
+
+        const workflow_type_select = dropdown_container.createEl("select", {
+            cls: "workflow-type-select",
+        });
+
+        const options = [
+            { value: "linear", text: "Linear Workflow" },
+            { value: "parallel", text: "Parallel Workflow" },
+        ];
+
+        options.forEach((option) => {
+            const opt = workflow_type_select.createEl("option", {
+                value: option.value,
+                text: option.text,
+            });
+            if (this.workflow_type === option.value) {
+                opt.selected = true;
+            }
+        });
+
+        workflow_type_select.addEventListener("change", (event) => {
+            this.workflow_type = (event.target as HTMLSelectElement).value;
+            new Notice(`Workflow type set to ${this.workflow_type}`);
+        });
+
         this.prompt_container.createEl("h3", { text: "System Prompt" });
         const text_area = this.prompt_container.createEl("textarea", {
             cls: "full_width_text_container",
@@ -1144,26 +1338,179 @@ ${prompts_string}
         });
     }
 
-    addPrompt(prompt: string = "", loading_prompt: boolean = false, index: number | null = null) {
-        let step_number = this.prompts.length === 0 ? 1 : this.prompts.length + 1;
-        if (index) {
-            step_number = index;
+    add_prompt(
+        prompt: WorkflowPrompt = { model: "default", provider: "default", delay: "0", temperature: "1", prompt: "" },
+        loading_prompt: boolean = false,
+        index: number | null = null
+    ) {
+        let step_number = index !== null ? index + 1 : this.prompts.length + 1;
+        let array_index = index !== null ? index : this.prompts.length;
+
+        if (step_number === 1) {
+            step_number = 1;
         }
-        this.prompt_container.createEl("h3", { text: `Step ${step_number}` });
-        const textArea = this.prompt_container.createEl("textarea", {
-            cls: "w-full workflow_text_area",
+        this.prompt_container.createEl("h3", { text: `Prompt ${step_number}` });
+
+        const text_area = this.prompt_container.createEl("textarea", {
+            cls: `w-full workflow_text_area text_area_id_${step_number}`,
             placeholder: "Add a step into your workflow",
         });
-        textArea.value = prompt;
-        if (!loading_prompt) {
-            this.prompts.push(textArea.value);
+        text_area.value = prompt.prompt;
+        text_area.id = `text_area_id_${step_number}`;
+        // Create a container div with class flex-row
+        const options_container = this.prompt_container.createEl("div", {
+            cls: "flex-row",
+        });
+        // Provider label and dropdown
+        const provider_label = options_container.createEl("label", {
+            text: "Provider",
+            cls: "row_items_spacing",
+        });
+        const provider_select = options_container.createEl("select", {
+            cls: "provider_select row_items_spacing",
+        });
+        const settings: CaretPluginSettings = this.plugin.settings;
+        const provider_entries = Object.entries(settings.provider_dropdown_options);
+
+        // Ensure the provider select has a default value set from the beginning
+        if (provider_entries.length > 0) {
+            provider_entries.forEach(([provider_key, provider_name]) => {
+                const option = provider_select.createEl("option", { text: provider_name });
+                option.value = provider_key;
+            });
         }
 
-        textArea.addEventListener("input", () => {
-            const index = Array.from(this.prompt_container.children)
-                .filter((child) => child.tagName.toLowerCase() === "textarea")
-                .indexOf(textArea);
-            this.prompts[index] = textArea.value;
+        // Default to the first provider if prompt.provider is not set
+        if (!prompt.provider && provider_entries.length > 0) {
+            prompt.provider = provider_entries[0][0];
+        }
+
+        // Set the default value after options are added
+        provider_select.value = prompt.provider || provider_entries[0][0];
+
+        // Model label and dropdown
+        const model_label = options_container.createEl("label", {
+            text: "Model",
+            cls: "row_items_spacing",
+        });
+        const model_select = options_container.createEl("select", {
+            cls: "model_select row_items_spacing",
+        });
+
+        // Function to update model options based on selected provider
+        const update_model_options = (provider: string) => {
+            if (!provider) {
+                return;
+            }
+            model_select.innerHTML = ""; // Clear existing options
+            const models = settings.llm_provider_options[provider];
+            Object.entries(models).forEach(([model_key, model_details]) => {
+                const option = model_select.createEl("option", { text: model_details.name });
+                option.value = model_key;
+            });
+            // Set the default value after options are added
+            model_select.value = prompt.model;
+        };
+
+        // Add event listener to provider select to update models dynamically
+        provider_select.addEventListener("change", (event) => {
+            const selected_provider = (event.target as HTMLSelectElement).value;
+            update_model_options(selected_provider);
+        });
+
+        // Initialize model options based on the default or current provider
+        update_model_options(provider_select.value);
+        model_select.value = prompt.model;
+
+        // Temperature label and input
+        const temperature_label = options_container.createEl("label", {
+            text: "Temperature",
+            cls: "row_items_spacing",
+        });
+
+        // Temperature input
+        const temperature_input = options_container.createEl("input", {
+            type: "number",
+            cls: "temperature_input",
+        }) as HTMLInputElement;
+
+        // Set the attributes separately to avoid TypeScript errors
+        temperature_input.min = "0";
+        temperature_input.max = "2";
+        temperature_input.step = "0.1";
+        temperature_input.value = prompt.temperature;
+
+        // Ensure the up and down arrows appear on the input
+        temperature_input.style.appearance = "number-input";
+        temperature_input.style.webkitAppearance = "number-input";
+
+        // Delay label and input
+        const delay_label = options_container.createEl("label", {
+            text: "Delay",
+            cls: "row_items_spacing",
+        });
+        const delay_input = options_container.createEl("input", {
+            type: "number",
+            cls: "delay_input row_items_spacing",
+            // @ts-ignore
+            min: "0",
+            max: "60",
+            step: "1",
+            value: prompt.delay,
+        });
+
+        if (!loading_prompt) {
+            this.prompts.push({
+                model: provider_select.value,
+                provider: provider_select.value,
+                delay: delay_input.value,
+                temperature: temperature_input.value,
+                prompt: text_area.value,
+            });
+        }
+
+        text_area.id = `text_area_id_${array_index}`;
+        provider_select.id = `provider_select_id_${array_index}`;
+        model_select.id = `model_select_id_${array_index}`;
+        temperature_input.id = `temperature_input_id_${array_index}`;
+        delay_input.id = `delay_input_id_${array_index}`;
+
+        text_area.addEventListener("input", () => {
+            const text_area_element = this.prompt_container.querySelector(`#text_area_id_${array_index}`);
+            if (text_area_element) {
+                this.prompts[array_index].prompt = (text_area_element as HTMLInputElement).value;
+            }
+        });
+
+        provider_select.addEventListener("change", () => {
+            const provider_select_element = this.prompt_container.querySelector(`#provider_select_id_${array_index}`);
+            if (provider_select_element) {
+                this.prompts[array_index].provider = provider_select.value;
+                update_model_options(provider_select.value);
+            }
+        });
+
+        model_select.addEventListener("change", () => {
+            const model_select_element = this.prompt_container.querySelector(`#model_select_id_${array_index}`);
+            if (model_select_element) {
+                this.prompts[array_index].model = model_select.value;
+            }
+        });
+
+        temperature_input.addEventListener("input", () => {
+            const temperature_input_element = this.prompt_container.querySelector(
+                `#temperature_input_id_${array_index}`
+            );
+            if (temperature_input_element) {
+                this.prompts[array_index].temperature = temperature_input.value;
+            }
+        });
+
+        delay_input.addEventListener("input", () => {
+            const delay_input_element = this.prompt_container.querySelector(`#delay_input_id_${array_index}`);
+            if (delay_input_element) {
+                this.prompts[array_index].delay = delay_input.value;
+            }
         });
     }
 }
@@ -1222,8 +1569,8 @@ export default class CaretPlugin extends Plugin {
             },
         });
         this.addCommand({
-            id: "create-blank-linear-workflow",
-            name: "Create Blank Linear Workflow",
+            id: "create-new-workflow",
+            name: "Create New Workflow",
             callback: () => {
                 const leaf = this.app.workspace.getLeaf(true);
                 const linearWorkflowEditor = new LinearWorkflowEditor(this, leaf);
@@ -1303,7 +1650,7 @@ export default class CaretPlugin extends Plugin {
         // });
         this.addCommand({
             id: "create-linear-workflow",
-            name: "Create Linear Workflow",
+            name: "Create Linear Workflow From Canvas",
             callback: async () => {
                 const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
                 // @ts-ignore
@@ -1438,7 +1785,7 @@ export default class CaretPlugin extends Plugin {
                     const escaped_content = this.escapeXml(prompts[i]);
                     prompts_string += `
 
-<prompt>
+<prompt model="${this.settings.model}" provider="${this.settings.llm_provider}" delay="0" temperature="1">
 ${escaped_content}
 </prompt>`.trim();
                 }
@@ -1450,7 +1797,7 @@ version: 1
 ---
 \`\`\`xml
 <root>
-<system_prompt>
+<system_prompt tag="placeholder_do_not_delete">
 </system_prompt>
     ${prompts_string}
 </root>
@@ -2211,15 +2558,11 @@ version: 1
     parseCustomXML(xmlString: string, tags: string[]) {
         // Function to extract content between tags
         function getContent(tag: string, string: string) {
-            console.log({ xmlString });
             const openTag = `<${tag}>`;
             const closeTag = `</${tag}>`;
-            console.log(openTag);
-            console.log(closeTag);
             const start = string.indexOf(openTag) + openTag.length;
             const end = string.indexOf(closeTag);
             const prompt_content = string.substring(start, end).trim();
-            console.log(prompt_content);
             return prompt_content;
         }
 
@@ -2497,7 +2840,15 @@ version: 1
         return canvas_view;
     }
 
-    async sparkle(node_id: string, system_prompt: string = "") {
+    async sparkle(
+        node_id: string,
+        system_prompt: string = "",
+        sparkle_config: SparkleConfig = {
+            model: "default",
+            provider: "default",
+            temperature: 1,
+        }
+    ) {
         const userRegex = /<role>User<\/role>/i;
         const assistantRegex = /<role>assistant<\/role>/i;
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
@@ -2536,26 +2887,34 @@ version: 1
                 // Check for the presence of three dashes indicating the start of the front matter
                 const front_matter = await this.get_frontmatter(file);
                 if (front_matter.hasOwnProperty("caret_prompt")) {
-                    console.log(front_matter);
-
                     let caret_prompt = front_matter.caret_prompt;
-                    let prompt_tags: string[] = front_matter.prompts;
 
-                    if (caret_prompt === "parallel_prompts") {
-                        const prompts = this.parseCustomXML(text, prompt_tags);
+                    if (caret_prompt === "parallel") {
+                        const xml_content = text.match(/```xml([\s\S]*?)```/)[1].trim();
+                        const xml = await this.parseXml(xml_content);
+                        const system_prompt_list = xml.root.system_prompt;
 
-                        const prompts_keys = Object.keys(prompts);
-                        const total_prompts = prompts_keys.length;
+                        const system_prompt = system_prompt_list[0]._.trim();
+
+                        const prompts = xml.root.prompt;
                         const card_height = node.height;
-                        const middle_index = Math.floor(total_prompts / 2);
+                        const middle_index = Math.floor(prompts.length / 2);
                         const highest_y = node.y - middle_index * (100 + card_height); // Calculate the highest y based on the middle index
-                        const sparklePromises = [];
-                        for (let i = 0; i < prompts_keys.length; i++) {
-                            const prompt = prompts[prompts_keys[i]];
-                            let x = node.x + node.width + 200;
-                            let y = highest_y + i * (100 + card_height); // Increment y for each prompt to distribute them vertically including card height
-                            const new_node_content = `<role>user</role>\n${prompt}`;
-                            const node_output = await this.childNode(
+                        const sparkle_promises = [];
+
+                        for (let i = 0; i < prompts.length; i++) {
+                            const prompt = prompts[i];
+                            const prompt_content = prompt._.trim();
+                            const prompt_delay = prompt.$?.delay || 0;
+                            const prompt_model = prompt.$?.model || "default";
+                            const prompt_provider = prompt.$?.provider || "default";
+                            const prompt_temperature = parseFloat(prompt.$?.temperature) || this.settings.temperature;
+                            const new_node_content = `<role>user</role>\n${prompt_content}`;
+                            const x = node.x + node.width + 200;
+                            const y = highest_y + i * (100 + card_height); // Increment y for each prompt to distribute them vertically including card height
+
+                            // Create a new user node
+                            const user_node = await this.childNode(
                                 canvas,
                                 node,
                                 x,
@@ -2565,25 +2924,47 @@ version: 1
                                 "left",
                                 "groq"
                             );
-                            sparklePromises.push(this.sparkle(node_output.id));
-                            break;
+
+                            const sparkle_config: SparkleConfig = {
+                                model: prompt_model,
+                                provider: prompt_provider,
+                                temperature: prompt_temperature,
+                            };
+
+                            const sparkle_promise = (async () => {
+                                if (prompt_delay > 0) {
+                                    new Notice(`Waiting for ${prompt_delay} seconds...`);
+                                    await new Promise((resolve) => setTimeout(resolve, prompt_delay * 1000));
+                                    new Notice(`Done waiting for ${prompt_delay} seconds.`);
+                                }
+                                await this.sparkle(user_node.id, system_prompt, sparkle_config);
+                            })();
+
+                            sparkle_promises.push(sparkle_promise);
                         }
-                        await Promise.all(sparklePromises);
+
+                        await Promise.all(sparkle_promises);
                         return;
-                    }
-                    if (caret_prompt === "linear") {
+                    } else if (caret_prompt === "linear") {
                         const xml_content = text.match(/```xml([\s\S]*?)```/)[1].trim();
                         const xml = await this.parseXml(xml_content);
-
                         const system_prompt_list = xml.root.system_prompt;
 
-                        const system_prompt = xml.root.system_prompt[0].trim();
+                        const system_prompt = system_prompt_list[0]._.trim();
+
                         const prompts = xml.root.prompt;
+                        console.log("---------------------------");
+                        console.log(prompts);
 
                         let current_node = node;
                         for (let i = 0; i < prompts.length; i++) {
-                            const prompt = prompts[i].trim();
-                            const new_node_content = `<role>user</role>\n${prompt}`;
+                            const prompt = prompts[i];
+                            const prompt_content = prompt._.trim();
+                            const prompt_delay = prompt.$?.delay || 0;
+                            const prompt_model = prompt.$?.model || "default";
+                            const prompt_provider = prompt.$?.provider || "default";
+                            const prompt_temperature = parseFloat(prompt.$?.temperature) || this.settings.temperature;
+                            const new_node_content = `<role>user</role>\n${prompt_content}`;
                             const x = current_node.x + current_node.width + 200;
                             const y = current_node.y;
 
@@ -2599,24 +2980,24 @@ version: 1
                                 "groq"
                             );
                             console.log({ system_prompt });
-                            const assistant_node = await this.sparkle(user_node.id, system_prompt);
+                            const sparkle_config: SparkleConfig = {
+                                model: prompt_model,
+                                provider: prompt_provider,
+                                temperature: prompt_temperature,
+                            };
+                            console.log({ sparkle_config });
+                            const assistant_node = await this.sparkle(user_node.id, system_prompt, sparkle_config);
                             current_node = assistant_node;
-
-                            // // Run sparkle on the new user node to generate the assistant response
-                            // await this.sparkle(user_node.id);
-
-                            // // Fetch the newly created assistant node
-                            // const assistant_node = await this.get_current_node(canvas, user_node.id);
-                            // if (!assistant_node) {
-                            //     console.error("Assistant node not found");
-                            //     break;
-                            // }
-
-                            // // Set the current node to the assistant node for the next iteration
-                            // current_node = assistant_node;
+                            if (prompt_delay > 0) {
+                                new Notice(`Waiting for ${prompt_delay} seconds...`);
+                                await new Promise((resolve) => setTimeout(resolve, prompt_delay * 1000));
+                                new Notice(`Done waiting for ${prompt_delay} seconds.`);
+                            }
                         }
+                    } else {
+                        new Notice("Invalid Caret Prompt");
                     }
-                    new Notice("Invalid Caret Prompt");
+
                     return;
                 }
             } else {
@@ -2707,8 +3088,21 @@ version: 1
         }
         console.log(conversation);
 
+        let model = this.settings.model;
+        let provider = this.settings.llm_provider;
+        let temperature = this.settings.temperature;
+        if (sparkle_config.model !== "default") {
+            model = sparkle_config.model;
+        }
+        if (sparkle_config.provider !== "default") {
+            provider = sparkle_config.provider;
+        }
+        if (sparkle_config.temperature !== this.settings.temperature) {
+            temperature = sparkle_config.temperature;
+        }
+
         // const message = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
-        const stream = await this.llm_call_streaming(this.settings.llm_provider, this.settings.model, conversation);
+        const stream = await this.llm_call_streaming(provider, model, conversation, temperature);
         // const content = message.content;
         const node_content = `<role>assistant</role>\n`;
         const x = node.x + node.width + 200;
@@ -2850,7 +3244,7 @@ version: 1
             throw new Error(error_message);
         }
     }
-    async llm_call_streaming(provider: string, model: string, conversation: any[]) {
+    async llm_call_streaming(provider: string, model: string, conversation: any[], temperature: number) {
         if (this.settings.system_prompt && this.settings.system_prompt.length > 0) {
             conversation.unshift({
                 role: "system",
@@ -2865,6 +3259,7 @@ version: 1
                     model: model_param,
                     messages: conversation,
                     stream: true,
+                    temperature: temperature,
                 });
                 return response;
             } catch (error) {
@@ -2885,6 +3280,7 @@ version: 1
                 messages: conversation,
                 model: model,
                 stream: true,
+                temperature: temperature,
             };
             try {
                 const stream = await this.openai_client.chat.completions.create(params);
@@ -2906,6 +3302,7 @@ version: 1
                 messages: conversation,
                 model: model,
                 stream: true,
+                temperature: temperature,
             };
             try {
                 const stream = await this.groq_client.chat.completions.create(params);
@@ -2915,29 +3312,29 @@ version: 1
                 new Notice(error.message);
                 throw error;
             }
-        } else if (provider == "anthropic") {
-            if (!this.anthropic_client) {
-                const error_message = "API key not configured for Anthropic. Restart the app if you just added it!";
-                new Notice(error_message);
-                throw new Error(error_message);
-            }
-            new Notice("Calling Anthropic");
-            // const max_tokens = this.settings.context_window -
+            // } else if (provider == "anthropic") {
+            //     if (!this.anthropic_client) {
+            //         const error_message = "API key not configured for Anthropic. Restart the app if you just added it!";
+            //         new Notice(error_message);
+            //         throw new Error(error_message);
+            //     }
+            //     new Notice("Calling Anthropic");
+            //     // const max_tokens = this.settings.context_window -
 
-            const params = {
-                messages: conversation,
-                model: model,
-                stream: true,
-                max_tokens: 4096,
-            };
-            try {
-                const stream = await this.anthropic_client.messages.create(params);
-                return stream;
-            } catch (error) {
-                console.error("Error fetching chat completion from Anthropic:", error);
-                new Notice(error.message);
-                throw error;
-            }
+            //     const params = {
+            //         messages: conversation,
+            //         model: model,
+            //         stream: true,
+            //         max_tokens: 4096,
+            //     };
+            //     try {
+            //         const stream = await this.anthropic_client.messages.create(params);
+            //         return stream;
+            //     } catch (error) {
+            //         console.error("Error fetching chat completion from Anthropic:", error);
+            //         new Notice(error.message);
+            //         throw error;
+            //     }
         } else if (provider == "custom") {
             new Notice("Calling Custom Client");
             const custom_model = this.settings.model;
@@ -2967,6 +3364,7 @@ version: 1
                 messages: conversation,
                 model: model,
                 stream: true,
+                temperature: temperature,
             };
 
             try {
@@ -3264,137 +3662,19 @@ class CaretSettingTab extends PluginSettingTab {
             return;
         }
 
-        let llm_provider_options: {
-            [key: string]: {
-                [model: string]: Models;
-            };
-        } = {
-            openai: {
-                "gpt-4-turbo": {
-                    name: "gpt-4-turbo",
-                    context_window: 128000,
-                    function_calling: true,
-                    vision: true,
-                    streaming: true,
-                },
-                "gpt-3.5-turbo": {
-                    name: "gpt-3.5-turbo",
-                    context_window: 128000,
-                    function_calling: true,
-                    vision: true,
-                    streaming: true,
-                },
-                "gpt-4o": {
-                    name: "gpt-4o",
-                    context_window: 128000,
-                    function_calling: true,
-                    vision: true,
-                    streaming: true,
-                },
-            },
-            // anthropic: {
-            //     "claude-3-opus-20240229": {
-            //         name: "Claude 3 Opus",
-            //         context_window: 200000,
-            //         function_calling: true,
-            //         vision: true,
-            //         streaming: true,
-            //     },
-            //     "claude-3-sonnet-20240229": {
-            //         name: "Claude 3 Sonnet",
-            //         context_window: 200000,
-            //         function_calling: true,
-            //         vision: true,
-            //         streaming: true,
-            //     },
-            //     "claude-3-haiku-20240307": {
-            //         name: "Claude 3 Haiku",
-            //         context_window: 200000,
-            //         function_calling: true,
-            //         vision: true,
-            //         streaming: true,
-            //     },
-            // },
-            groq: {
-                "llama3-8b-8192": {
-                    name: "Llama 8B",
-                    context_window: 8192,
-                    function_calling: false,
-                    vision: false,
-                    streaming: true,
-                },
-                "llama3-70b-8192": {
-                    name: "Llama 70B",
-                    context_window: 8192,
-                    function_calling: false,
-                    vision: false,
-                    streaming: true,
-                },
-                "mixtral-8x7b-32768": {
-                    name: "Mixtral 8x7b",
-                    context_window: 32768,
-                    function_calling: false,
-                    vision: false,
-                    streaming: true,
-                },
-                "gemma-7b-it": {
-                    name: "Gemma 7B",
-                    context_window: 8192,
-                    function_calling: false,
-                    vision: false,
-                    streaming: true,
-                },
-            },
-            ollama: {
-                llama3: {
-                    name: "llama3 8B",
-                    context_window: 8192,
-                    function_calling: false,
-                    vision: false,
-                    streaming: true,
-                },
-                phi3: {
-                    name: "Phi-3 3.8B",
-                    context_window: 8192,
-                    function_calling: false,
-                    vision: false,
-                    streaming: true,
-                },
-                mistral: {
-                    name: "Mistral 7B",
-                    context_window: 32768,
-                    function_calling: false,
-                    vision: false,
-                    streaming: true,
-                },
-                gemma: {
-                    name: "Gemma 7B",
-                    context_window: 8192,
-                    function_calling: false,
-                    vision: false,
-                    streaming: true,
-                },
-            },
-            custom: {},
-        };
         const custom_endpoints = this.plugin.settings.custom_endpoints;
-        let model_drop_down_settings: ModelDropDownSettings = {
-            openai: "OpenAI",
-            // anthropic: "Antropic",
-            groq: "Groq",
-            ollama: "ollama",
-        };
+        // @ts-ignore
+        let model_drop_down_settings: ModelDropDownSettings = this.plugin.settings.provider_dropdown_options;
 
         if (Object.keys(custom_endpoints).length > 0) {
             for (const [key, value] of Object.entries(custom_endpoints)) {
                 if (value.known_provider) {
-                    if (!llm_provider_options[value.known_provider]) {
-                        llm_provider_options[value.known_provider] = {};
+                    if (!this.plugin.settings.llm_provider_options[value.known_provider]) {
+                        this.plugin.settings.llm_provider_options[value.known_provider] = {};
                     }
-                    llm_provider_options[value.known_provider][key] = value;
+                    this.plugin.settings.llm_provider_options[value.known_provider][key] = value;
                 } else {
-                    llm_provider_options.custom[key] = value;
-                    model_drop_down_settings["custom"] = "Custom";
+                    this.plugin.settings.llm_provider_options.custom[key] = value;
                 }
             }
         }
@@ -3403,8 +3683,11 @@ class CaretSettingTab extends PluginSettingTab {
         try {
             const llm_provider = this.plugin.settings.llm_provider;
             const model = this.plugin.settings.model;
-            if (llm_provider_options[llm_provider] && llm_provider_options[llm_provider][model]) {
-                const model_details = llm_provider_options[llm_provider][model];
+            if (
+                this.plugin.settings.llm_provider_options[llm_provider] &&
+                this.plugin.settings.llm_provider_options[llm_provider][model]
+            ) {
+                const model_details = this.plugin.settings.llm_provider_options[llm_provider][model];
                 if (model_details && model_details.context_window) {
                     const context_window_value = model_details.context_window;
                     context_window = parseInt(context_window_value).toLocaleString();
@@ -3423,7 +3706,9 @@ class CaretSettingTab extends PluginSettingTab {
 
         const model_options_data = Object.fromEntries(
             Object.entries(
-                llm_provider_options[this.plugin.settings.llm_provider as keyof typeof llm_provider_options]
+                this.plugin.settings.llm_provider_options[
+                    this.plugin.settings.llm_provider as keyof typeof this.plugin.settings.llm_provider_options
+                ]
             ).map(([key, value]) => [key, value.name])
         );
 
@@ -3437,9 +3722,13 @@ class CaretSettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.llm_provider)
                     .onChange(async (provider) => {
                         this.plugin.settings.llm_provider = provider;
-                        this.plugin.settings.model = Object.keys(llm_provider_options[provider])[0];
+                        this.plugin.settings.model = Object.keys(
+                            this.plugin.settings.llm_provider_options[provider]
+                        )[0];
                         this.plugin.settings.context_window =
-                            llm_provider_options[provider][this.plugin.settings.model].context_window;
+                            this.plugin.settings.llm_provider_options[provider][
+                                this.plugin.settings.model
+                            ].context_window;
                         await this.plugin.saveSettings();
                         await this.plugin.loadSettings();
                         this.display();
@@ -3451,7 +3740,7 @@ class CaretSettingTab extends PluginSettingTab {
             modelDropdown.onChange(async (value) => {
                 this.plugin.settings.model = value;
                 this.plugin.settings.context_window =
-                    llm_provider_options[this.plugin.settings.llm_provider][value].context_window;
+                    this.plugin.settings.llm_provider_options[this.plugin.settings.llm_provider][value].context_window;
                 await this.plugin.saveSettings();
                 await this.plugin.loadSettings();
                 this.display();

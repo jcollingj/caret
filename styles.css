@@ -176,3 +176,11 @@
 .workflow_text_area {
     height: 150px
 }
+.row_items_spacing {
+    margin-right: 3px;
+}
+
+.bottom-screen-padding {
+    padding-bottom: 100px;
+}
+
