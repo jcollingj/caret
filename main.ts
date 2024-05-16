@@ -216,7 +216,6 @@ export class InsertNoteModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         const all_files = this.app.vault.getFiles();
-        console.log(all_files);
 
         const html_insert_files = contentEl.createEl("p", {
             text: "Insert File",
@@ -263,7 +262,6 @@ export class InsertNoteModal extends Modal {
         // Update display when input changes
         inputField.addEventListener("input", () => {
             const filtered_files = filter_files(inputField.value);
-            console.log(filtered_files);
 
             // Clear previous file display
             filesDisplay.innerHTML = "";
@@ -272,10 +270,7 @@ export class InsertNoteModal extends Modal {
             filtered_files.forEach((file) => {
                 const fileElement = filesDisplay.createEl("div", { text: file.name, cls: "insert-file-file-name" });
                 fileElement.addEventListener("click", () => {
-                    console.log(`File selected: ${file.name}`);
-                    console.log(this.current_view);
                     if (this.current_view.getViewType() === "main-caret") {
-                        console.log("Inserting into user message");
                         this.current_view.insert_text_into_user_message(`[[${file.name}]]`);
                         this.current_view.focusAndPositionCursorInTextBox();
                         this.close();
@@ -521,7 +516,6 @@ class FullPageChat extends ItemView {
             if (event.key === "@") {
                 event.preventDefault(); // Prevent the default action
                 this.textBox.value += "@"; // Add the '@' sign to the textBox value
-                console.log("The '@' key was pressed.");
                 new InsertNoteModal(this.app, this.plugin, this).open(); // Open the modal
             }
         });
@@ -869,22 +863,8 @@ class CustomModelModal extends Modal {
                 };
 
                 settings.custom_endpoints[this.model_id] = new_model;
-                console.log("Clicking add here");
-                console.log(settings);
 
                 await this.plugin.saveSettings();
-                // await this.plugin.loadSettings();
-
-                console.log({
-                    model_id: this.model_id,
-                    model_name: this.model_name,
-                    streaming: this.streaming,
-                    vision: this.vision,
-                    context_window: this.context_window,
-                    url: this.url,
-                    api_key: this.api_key,
-                    known_provider: this.known_provider,
-                });
 
                 this.close();
             });
@@ -986,6 +966,207 @@ class SystemPromptModal extends Modal {
     }
 }
 
+class LinearWorkflowEditor extends ItemView {
+    plugin: any;
+    file_path: string;
+    prompts: string[];
+    workflow_name: string;
+    system_prompt: string;
+    prompt_container: HTMLDivElement;
+    stored_file_name: string;
+
+    constructor(plugin: any, leaf: WorkspaceLeaf, file_path: string = "") {
+        super(leaf);
+        this.plugin = plugin;
+        this.file_path = file_path;
+        this.prompts = [];
+        this.workflow_name = "";
+        this.system_prompt = "";
+    }
+
+    getViewType() {
+        return "linear-workflow";
+    }
+
+    getDisplayText() {
+        return "Linear Workflow Editor";
+    }
+
+    async onOpen() {
+        if (this.file_path) {
+            const file = this.app.vault.getAbstractFileByPath(this.file_path);
+            if (file) {
+                const file_content = await this.app.vault.cachedRead(file);
+                this.workflow_name = file.name.replace(".md", "");
+                this.stored_file_name = file.name;
+                const xml_content = file_content.match(/```xml([\s\S]*?)```/)[1].trim();
+                const xml = await this.plugin.parseXml(xml_content);
+                const xml_prompts = xml.root.prompt;
+                for (let i = 0; i < xml_prompts.length; i++) {
+                    if (xml_prompts[i].trim().length > 0) {
+                        this.prompts.push(xml_prompts[i].trim());
+                    }
+                }
+
+                if (xml.root.system_prompt && xml.root.system_prompt.length > 0) {
+                    this.system_prompt = xml.root.system_prompt[0];
+                } else {
+                    this.system_prompt = "";
+                }
+                // Process file content and initialize prompts if necessary
+            }
+        }
+
+        const metacontainer = this.containerEl.children[1];
+        metacontainer.empty();
+        const container = metacontainer.createEl("div", {
+            cls: "workflow_container",
+        });
+        metacontainer.prepend(container);
+
+        // Add description
+
+        // Add workflow name input
+        const title_container = container.createEl("div", { cls: "flex-row" });
+        title_container.createEl("h2", { text: `Workflow Name:`, cls: "w-8" });
+        const workflow_name_input = title_container.createEl("input", {
+            type: "text",
+            cls: "workflow-name-input w-full",
+            value: this.workflow_name,
+        });
+        container.createEl("p", { text: "Add prompts that will then be run in a linear fashion on any input." });
+        workflow_name_input.addEventListener("input", () => {
+            this.workflow_name = workflow_name_input.value;
+        });
+
+        this.prompt_container = container.createEl("div", { cls: "w-full" });
+
+        // Create the system message right away
+        this.add_system_prompt();
+        if (this.prompts.length > 0) {
+            for (let i = 0; i < this.prompts.length; i++) {
+                this.addPrompt(this.prompts[i], true, i + 1);
+            }
+        } else {
+            this.addPrompt("");
+        }
+
+        // Create a button to add new prompts
+        const buttonContainer = container.createEl("div", { cls: "button-container" });
+
+        const addPromptButton = buttonContainer.createEl("button", { text: "Add New Prompt" });
+        addPromptButton.addEventListener("click", () => {
+            this.addPrompt();
+        });
+
+        // Create a save workflow button
+        const save_button = buttonContainer.createEl("button", { text: "Save Workflow" });
+        save_button.addEventListener("click", () => {
+            if (this.workflow_name.length === 0) {
+                new Notice("Workflow must be named before saving");
+            } else if (this.prompts.length <= 1 && this.prompts[0].length <= 1) {
+                new Notice("There must be at least one prompt");
+            } else {
+                this.save_workflow();
+            }
+        });
+    }
+    async save_workflow() {
+        const chat_folder_path = "caret/workflows";
+        const chat_folder = this.app.vault.getAbstractFileByPath(chat_folder_path);
+        if (!chat_folder) {
+            await this.app.vault.createFolder(chat_folder_path);
+        }
+        const system_prompt_string = `
+<system_prompt>
+${this.plugin.escapeXml(this.system_prompt)}
+</system_prompt>
+`;
+
+        let prompts_string = ``;
+        for (let i = 0; i < this.prompts.length; i++) {
+            if (this.prompts[i].length === 0) {
+                continue;
+            }
+            const escaped_content = this.plugin.escapeXml(this.prompts[i]);
+            prompts_string += `
+<prompt>
+${escaped_content}
+</prompt>`.trim();
+        }
+
+        let file_content = `
+---
+caret_prompt: linear
+version: 1
+---
+\`\`\`xml
+<root>
+${system_prompt_string}
+${prompts_string}
+</root>
+\`\`\`
+        `.trim();
+
+        let file_name = `${this.workflow_name}.md`;
+        let file_path = `${chat_folder_path}/${file_name}`;
+        let old_file_path = `${chat_folder_path}/${this.stored_file_name}`;
+        let file = await this.app.vault.getFileByPath(old_file_path);
+        console.log({ file_name, file_path, old_file_path });
+
+        try {
+            if (file) {
+                if (old_file_path !== file_path) {
+                    console.log("Does this work?");
+                    await this.app.vault.rename(file, file_path);
+                }
+                await this.app.vault.modify(file, file_content);
+                new Notice("Workflow Updated!");
+            } else {
+                await this.app.vault.create(file_path, file_content);
+                new Notice("Workflow Created!");
+            }
+        } catch (error) {
+            console.error("Failed to save chat:", error);
+        }
+    }
+
+    add_system_prompt(system_prompt: string = "") {
+        this.prompt_container.createEl("h3", { text: "System Prompt" });
+        const text_area = this.prompt_container.createEl("textarea", {
+            cls: "full_width_text_container",
+            placeholder: "Add a system prompt",
+        });
+        text_area.value = this.system_prompt;
+
+        text_area.addEventListener("input", () => {
+            this.system_prompt = text_area.value;
+        });
+    }
+
+    addPrompt(prompt: string = "", loading_prompt: boolean = false, index: number | null = null) {
+        let step_number = this.prompts.length === 0 ? 1 : this.prompts.length + 1;
+        if (index) {
+            step_number = index;
+        }
+        this.prompt_container.createEl("h3", { text: `Step ${step_number}` });
+        const textArea = this.prompt_container.createEl("textarea", {
+            cls: "w-full workflow_text_area",
+            placeholder: "Add a step into your workflow",
+        });
+        textArea.value = prompt;
+        if (!loading_prompt) {
+            this.prompts.push(textArea.value);
+        }
+
+        textArea.addEventListener("input", () => {
+            const index = Array.from(this.prompt_container.children)
+                .filter((child) => child.tagName.toLowerCase() === "textarea")
+                .indexOf(textArea);
+            this.prompts[index] = textArea.value;
+        });
+    }
+}
 export default class CaretPlugin extends Plugin {
     settings: CaretPluginSettings;
     canvas_patched: boolean = false;
@@ -1040,6 +1221,276 @@ export default class CaretPlugin extends Plugin {
                 new SystemPromptModal(this.app, this).open();
             },
         });
+        this.addCommand({
+            id: "create-blank-linear-workflow",
+            name: "Create Blank Linear Workflow",
+            callback: () => {
+                const leaf = this.app.workspace.getLeaf(true);
+                const linearWorkflowEditor = new LinearWorkflowEditor(this, leaf);
+                leaf.open(linearWorkflowEditor);
+                this.app.workspace.revealLeaf(leaf);
+            },
+        });
+        // this.addCommand({
+        //     id: "create-graph-workflow",
+        //     name: "Create Graph Workflow",
+        //     callback: () => {
+        //         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
+        //         // @ts-ignore
+        //         if (!canvas_view?.canvas) {
+        //             return;
+        //         }
+        //         const canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
+
+        //         const selection = canvas.selection;
+
+        //         const selected_ids = [];
+        //         const selection_iterator = selection.values();
+        //         for (const node of selection_iterator) {
+        //             selected_ids.push(node.id);
+        //         }
+        //         const canvas_data = canvas.getData();
+        //         const { nodes, edges } = canvas;
+
+        //         // Filter nodes and edges based on selected IDs
+        //         const selected_nodes = [];
+        //         for (const node of nodes.values()) {
+        //             if (selected_ids.includes(node.id)) {
+        //                 selected_nodes.push(node);
+        //             }
+        //         }
+
+        //         const selected_edges = [];
+        //         for (const edge of edges.values()) {
+        //             if (selected_ids.includes(edge.from.node.id) && selected_ids.includes(edge.to.node.id)) {
+        //                 selected_edges.push(edge);
+        //             }
+        //         }
+
+        //         // Create a map to store node relationships
+        //         const node_map = new Map();
+
+        //         // Initialize the map with selected nodes
+        //         selected_nodes.forEach((node) => {
+        //             node_map.set(node.id, {
+        //                 id: node.id,
+        //                 content: node.text,
+        //                 parents: [],
+        //                 children: [],
+        //             });
+        //         });
+
+        //         // Populate parent and child relationships
+        //         selected_edges.forEach((edge) => {
+        //             const from_node = node_map.get(edge.from.node.id);
+        //             const to_node = node_map.get(edge.to.node.id);
+        //             if (from_node && to_node) {
+        //                 from_node.children.push(to_node.id);
+        //                 to_node.parents.push(from_node.id);
+        //             }
+        //         });
+
+        //         // Convert the node_map to the desired JSON format
+        //         const workflow = {
+        //             nodes: Array.from(node_map.values()).map((node) => ({
+        //                 id: node.id,
+        //                 children: node.children,
+        //             })),
+        //         };
+
+        //         // Log the workflow in JSON format
+        //     },
+        // });
+        this.addCommand({
+            id: "create-linear-workflow",
+            name: "Create Linear Workflow",
+            callback: async () => {
+                const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
+                // @ts-ignore
+                if (!canvas_view?.canvas) {
+                    return;
+                }
+                const canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
+
+                const selection = canvas.selection;
+
+                const selected_ids = [];
+                const selection_iterator = selection.values();
+                for (const node of selection_iterator) {
+                    selected_ids.push(node.id);
+                }
+
+                const canvas_data = canvas.getData();
+                const { nodes, edges } = canvas;
+
+                // Filter nodes and edges based on selected IDs
+                const selected_nodes = [];
+                for (const node of nodes.values()) {
+                    if (selected_ids.includes(node.id)) {
+                        selected_nodes.push(node);
+                    }
+                }
+
+                const selected_edges = [];
+                for (const edge of edges.values()) {
+                    // if (selected_ids.includes(edge.from.node.id) && selected_ids.includes(edge.to.node.id)) {
+                    if (selected_ids.includes(edge.to.node.id)) {
+                        selected_edges.push(edge);
+                    }
+                }
+                const linear_graph = [];
+                for (let i = 0; i < selected_edges.length; i++) {
+                    const edge = selected_edges[i];
+                    const from_node = edge.from.node.id;
+                    const to_node = edge.to.node.id;
+                    const node_text = linear_graph.push({ from_node, to_node });
+                }
+                const from_nodes = new Set(linear_graph.map((edge) => edge.from_node));
+                const to_nodes = new Set(linear_graph.map((edge) => edge.to_node));
+
+                let ultimate_ancestor = null;
+                let ultimate_child = null;
+
+                // Find the ultimate ancestor (a from_node that is not a to_node)
+                for (const from_node of from_nodes) {
+                    if (!to_nodes.has(from_node)) {
+                        ultimate_ancestor = from_node;
+                        break;
+                    }
+                }
+
+                // Find the ultimate child (a to_node that is not a from_node)
+                for (const to_node of to_nodes) {
+                    if (!from_nodes.has(to_node)) {
+                        ultimate_child = to_node;
+                        break;
+                    }
+                }
+                // Create a map for quick lookup of edges by from_node
+                const edge_map = new Map();
+                for (const edge of linear_graph) {
+                    if (!edge_map.has(edge.from_node)) {
+                        edge_map.set(edge.from_node, []);
+                    }
+                    edge_map.get(edge.from_node).push(edge);
+                }
+
+                // Initialize the sorted graph with the ultimate ancestor
+                const sorted_graph = [];
+                let current_node = ultimate_ancestor;
+
+                // Traverse the graph starting from the ultimate ancestor
+                while (current_node !== ultimate_child) {
+                    const edges_from_current = edge_map.get(current_node);
+                    if (edges_from_current && edges_from_current.length > 0) {
+                        const next_edge = edges_from_current[0]; // Assuming there's only one edge from each node
+                        sorted_graph.push(next_edge);
+                        current_node = next_edge.to_node;
+                    } else {
+                        break; // No further edges, break the loop
+                    }
+                }
+
+                // Add the ultimate child as the last node
+                sorted_graph.push({ from_node: current_node, to_node: ultimate_child });
+                // Create a list to hold the ordered node IDs
+                const ordered_node_ids = [];
+
+                // Add the ultimate ancestor as the starting node
+                ordered_node_ids.push(ultimate_ancestor);
+
+                // Traverse the sorted graph to collect node IDs in order
+                for (const edge of sorted_graph) {
+                    if (
+                        edge.to_node !== ultimate_child ||
+                        ordered_node_ids[ordered_node_ids.length - 1] !== ultimate_child
+                    ) {
+                        ordered_node_ids.push(edge.to_node);
+                    }
+                }
+
+                // Initialize a new list to hold the prompts
+                const prompts = [];
+
+                // Iterate over the ordered node IDs
+                for (const node_id of ordered_node_ids) {
+                    // Find the corresponding node in selected_nodes
+                    const node = selected_nodes.find((n) => n.id === node_id);
+                    if (node) {
+                        // Get the node context
+                        const context = node.text;
+                        // Check if the context starts with "user"
+                        if (context.startsWith("<role>user</role>")) {
+                            // Add the context to the prompts list
+                            prompts.push(context.replace("<role>user</role>", "").trim());
+                        }
+                    }
+                }
+
+                const chat_folder_path = "caret/workflows";
+                const chat_folder = this.app.vault.getAbstractFileByPath(chat_folder_path);
+                if (!chat_folder) {
+                    await this.app.vault.createFolder(chat_folder_path);
+                }
+
+                let prompts_string = ``;
+                for (let i = 0; i < prompts.length; i++) {
+                    const escaped_content = this.escapeXml(prompts[i]);
+                    prompts_string += `
+
+<prompt>
+${escaped_content}
+</prompt>`.trim();
+                }
+
+                let file_content = `
+---
+caret_prompt: linear
+version: 1
+---
+\`\`\`xml
+<root>
+<system_prompt>
+</system_prompt>
+    ${prompts_string}
+</root>
+\`\`\`
+`.trim();
+
+                let base_file_name = prompts[0]
+                    .split(" ")
+                    .slice(0, 10)
+                    .join(" ")
+                    .substring(0, 20)
+                    .replace(/[^a-zA-Z0-9]/g, "_");
+                let file_name = `${base_file_name}.md`;
+                let file_path = `${chat_folder_path}/${file_name}`;
+                let file = await this.app.vault.getFileByPath(file_path);
+                let counter = 1;
+
+                while (file) {
+                    file_name = `${base_file_name}_${counter}.md`;
+                    file_path = `${chat_folder_path}/${file_name}`;
+                    file = await this.app.vault.getFileByPath(file_path);
+                    counter++;
+                }
+
+                try {
+                    if (file) {
+                        await this.app.vault.modify(file, file_content);
+                    } else {
+                        await this.app.vault.create(file_path, file_content);
+                    }
+                    // new Notice("Workflow saved!");
+                    const leaf = this.app.workspace.getLeaf(true);
+                    const linearWorkflowEditor = new LinearWorkflowEditor(this, leaf, file_path);
+                    leaf.open(linearWorkflowEditor);
+                    this.app.workspace.revealLeaf(leaf);
+                } catch (error) {
+                    console.error("Failed to save chat:", error);
+                }
+            },
+        });
 
         this.registerEvent(this.app.workspace.on("layout-change", () => {}));
         const that = this;
@@ -1069,8 +1520,6 @@ export default class CaretPlugin extends Plugin {
                 const currentLeaf = this.app.workspace.activeLeaf;
                 const path = "caret/chats";
                 const folder = this.app.vault.getFolderByPath(path);
-                console.log(this.app);
-                // console.log(this.app.vault.getConfig());
 
                 if (currentLeaf?.view.getViewType() === "canvas") {
                     const canvasView = currentLeaf.view;
@@ -1090,11 +1539,6 @@ export default class CaretPlugin extends Plugin {
                 }
                 const view = currentLeaf.view;
                 const view_type = view.getViewType();
-                // console.log("Workspace here");
-                // console.log(this.app.workspace);
-                // console.log("Current leaf here");
-                // console.log(currentLeaf);
-                // console.log({ view_type });
 
                 new InsertNoteModal(this.app, this, view).open();
             },
@@ -1180,16 +1624,6 @@ export default class CaretPlugin extends Plugin {
                         };
                         const node = canvas.createTextNode(text_node_config);
                         const node_id = node.id;
-                        // TODO - Fix this later
-                        // const node_interaction = await this.get_viewport_node(node_id);
-                        // if (node_interaction) {
-                        //     console.log("Valid viewport node");
-                        //     console.log(node_interaction);
-                        //     setTimeout(() => {
-                        //         node_interaction.zoomToSelection();
-                        //     }, 400);
-                        // }
-                        // console.log({ node_interaction });
 
                         const stream: Message = await this.llm_call_streaming(
                             this.settings.llm_provider,
@@ -1284,6 +1718,26 @@ export default class CaretPlugin extends Plugin {
                 }
             },
         });
+        this.addCommand({
+            id: "open-workflow-editor",
+            name: "Open Workflow Editor",
+            callback: async () => {
+                const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+                if (editor) {
+                    const current_file = this.app.workspace.getActiveFile();
+                    const front_matter = await this.get_frontmatter(current_file);
+
+                    if (front_matter.caret_prompt !== "linear") {
+                        new Notice("Not a linear workflow");
+                    }
+                    const leaf = this.app.workspace.getLeaf(true);
+                    const linearWorkflowEditor = new LinearWorkflowEditor(this, leaf, current_file?.path);
+                    leaf.open(linearWorkflowEditor);
+                    this.app.workspace.revealLeaf(leaf);
+                    return;
+                }
+            },
+        });
 
         this.addCommand({
             id: "apply-diffs",
@@ -1313,6 +1767,17 @@ export default class CaretPlugin extends Plugin {
                 }
             },
         });
+    }
+    async get_frontmatter(file: any) {
+        let front_matter: any;
+        try {
+            await this.app.fileManager.processFrontMatter(file, (fm) => {
+                front_matter = { ...fm };
+            });
+        } catch (error) {
+            console.error("Error processing front matter:", error);
+        }
+        return front_matter;
     }
 
     async highlight_lineage() {
@@ -1365,6 +1830,24 @@ export default class CaretPlugin extends Plugin {
                     node.render(); // Re-render the node to apply the color change
                 });
                 delete this.selected_node_colors[node_id]; // Remove from tracking object
+            }
+        });
+    }
+    escapeXml(unsafe: string): string {
+        return unsafe.replace(/[<>&'"]/g, (c) => {
+            switch (c) {
+                case "<":
+                    return "&lt;";
+                case ">":
+                    return "&gt;";
+                case "&":
+                    return "&amp;";
+                case "'":
+                    return "&apos;";
+                case '"':
+                    return "&quot;";
+                default:
+                    return c;
             }
         });
     }
@@ -1681,7 +2164,6 @@ export default class CaretPlugin extends Plugin {
         this.highlight_lineage();
     }
     // async get_viewport_node(node_id: string): Promise<ViewportNode | undefined> {
-    //     console.log("Running in get viewport node");
     //     const canvas_view = await this.get_current_canvas_view();
     //     // @ts-ignore
     //     const canvas = canvas_view.canvas;
@@ -1710,7 +2192,6 @@ export default class CaretPlugin extends Plugin {
     //             }
     //         }
     //     }
-    //     console.log(viewport_nodes);
     // }
     async parseXml(xmlString: string): Promise<any> {
         try {
@@ -1730,11 +2211,16 @@ export default class CaretPlugin extends Plugin {
     parseCustomXML(xmlString: string, tags: string[]) {
         // Function to extract content between tags
         function getContent(tag: string, string: string) {
+            console.log({ xmlString });
             const openTag = `<${tag}>`;
             const closeTag = `</${tag}>`;
+            console.log(openTag);
+            console.log(closeTag);
             const start = string.indexOf(openTag) + openTag.length;
             const end = string.indexOf(closeTag);
-            return string.substring(start, end).trim();
+            const prompt_content = string.substring(start, end).trim();
+            console.log(prompt_content);
+            return prompt_content;
         }
 
         // Initialize the result object
@@ -2011,10 +2497,9 @@ export default class CaretPlugin extends Plugin {
         return canvas_view;
     }
 
-    async sparkle(node_id: string) {
+    async sparkle(node_id: string, system_prompt: string = "") {
         const userRegex = /<role>User<\/role>/i;
         const assistantRegex = /<role>assistant<\/role>/i;
-        console.log("Running in sparkle");
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
         // @ts-ignore
         if (!canvas_view || !canvas_view.canvas) {
@@ -2037,7 +2522,6 @@ export default class CaretPlugin extends Plugin {
             await new Promise((resolve) => setTimeout(resolve, 200));
             node = await this.get_current_node(canvas, node_id); // Re-fetch the node to get the latest data
         }
-        console.log({ node });
 
         const canvas_data = canvas.getData();
         const { edges, nodes } = canvas_data;
@@ -2050,39 +2534,16 @@ export default class CaretPlugin extends Plugin {
                 const text = await this.app.vault.cachedRead(file);
 
                 // Check for the presence of three dashes indicating the start of the front matter
-                const front_matter_match = text.match(/^---\s*^([\s\S]*?)^---/m);
-                if (front_matter_match) {
-                    const front_matter_content = front_matter_match[1];
+                const front_matter = await this.get_frontmatter(file);
+                if (front_matter.hasOwnProperty("caret_prompt")) {
+                    console.log(front_matter);
 
-                    // Check for the presence of a caret prompt
-                    const caret_prompt_match = front_matter_content.match(/caret_prompt:\s*(\w+)/);
-                    let caret_prompt = "";
-                    let prompt_tags: string[] = [];
-                    if (caret_prompt_match) {
-                        caret_prompt = caret_prompt_match[1];
-                        const lines = front_matter_content.split("\n");
+                    let caret_prompt = front_matter.caret_prompt;
+                    let prompt_tags: string[] = front_matter.prompts;
 
-                        // Find the index of the line that contains 'prompts'
-                        const promptsIndex = lines.findIndex((line) => line.trim().startsWith("prompts:"));
-
-                        // Check if 'prompts' was found
-                        if (promptsIndex !== -1) {
-                            // Collect all subsequent lines that start with a dash '-' indicating list items
-                            for (let i = promptsIndex + 1; i < lines.length; i++) {
-                                const line = lines[i].trim();
-                                if (line.startsWith("-")) {
-                                    prompt_tags.push(line.substring(1).trim()); // Remove the dash and trim whitespace
-                                } else {
-                                    break; // Stop if we reach a line that doesn't start with a dash
-                                }
-                            }
-                        }
-                    }
-                    console.log("Does this happen?");
-                    console.log({ caret_prompt });
                     if (caret_prompt === "parallel_prompts") {
-                        console.log("What about here??");
                         const prompts = this.parseCustomXML(text, prompt_tags);
+
                         const prompts_keys = Object.keys(prompts);
                         const total_prompts = prompts_keys.length;
                         const card_height = node.height;
@@ -2105,9 +2566,57 @@ export default class CaretPlugin extends Plugin {
                                 "groq"
                             );
                             sparklePromises.push(this.sparkle(node_output.id));
+                            break;
                         }
                         await Promise.all(sparklePromises);
+                        return;
                     }
+                    if (caret_prompt === "linear") {
+                        const xml_content = text.match(/```xml([\s\S]*?)```/)[1].trim();
+                        const xml = await this.parseXml(xml_content);
+
+                        const system_prompt_list = xml.root.system_prompt;
+
+                        const system_prompt = xml.root.system_prompt[0].trim();
+                        const prompts = xml.root.prompt;
+
+                        let current_node = node;
+                        for (let i = 0; i < prompts.length; i++) {
+                            const prompt = prompts[i].trim();
+                            const new_node_content = `<role>user</role>\n${prompt}`;
+                            const x = current_node.x + current_node.width + 200;
+                            const y = current_node.y;
+
+                            // Create a new user node
+                            const user_node = await this.childNode(
+                                canvas,
+                                current_node,
+                                x,
+                                y,
+                                new_node_content,
+                                "right",
+                                "left",
+                                "groq"
+                            );
+                            console.log({ system_prompt });
+                            const assistant_node = await this.sparkle(user_node.id, system_prompt);
+                            current_node = assistant_node;
+
+                            // // Run sparkle on the new user node to generate the assistant response
+                            // await this.sparkle(user_node.id);
+
+                            // // Fetch the newly created assistant node
+                            // const assistant_node = await this.get_current_node(canvas, user_node.id);
+                            // if (!assistant_node) {
+                            //     console.error("Assistant node not found");
+                            //     break;
+                            // }
+
+                            // // Set the current node to the assistant node for the next iteration
+                            // current_node = assistant_node;
+                        }
+                    }
+                    new Notice("Invalid Caret Prompt");
                     return;
                 }
             } else {
@@ -2190,8 +2699,13 @@ export default class CaretPlugin extends Plugin {
             }
         }
         conversation.reverse();
-        console.log("HEREEEE");
-        console.log({ conversation });
+        if (system_prompt.length > 0) {
+            conversation.unshift({ role: "system", content: system_prompt });
+            console.log("System prompt is added");
+        } else {
+            console.log("No system prompt added");
+        }
+        console.log(conversation);
 
         // const message = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
         const stream = await this.llm_call_streaming(this.settings.llm_provider, this.settings.model, conversation);
@@ -2202,26 +2716,21 @@ export default class CaretPlugin extends Plugin {
         if (!new_node) {
             throw new Error("Invalid new node");
         }
-        console.log({ new_node });
         const new_node_id = new_node.id;
         if (!new_node_id) {
             throw new Error("Invalid node id");
         }
         await this.update_node_content(new_node_id, stream);
-        console.log("Does this run?");
+        return new_node;
     }
     async update_node_content(node_id: string, stream: any) {
-        console.log("Firing in update node_content");
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
         // @ts-ignore
         if (!canvas_view?.canvas) {
             return;
         }
         const canvas: Canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
-        console.log(canvas);
         const canvas_data = canvas.getData();
-        // console.log(canvas_data);
-        // console.log(canvas.nodes);
         const nodes_iterator = canvas.nodes.values();
         let node = null;
         for (const node_objs of nodes_iterator) {
@@ -2377,8 +2886,6 @@ export default class CaretPlugin extends Plugin {
                 model: model,
                 stream: true,
             };
-            console.log("Calling openai in streaming. This is the convo");
-            console.log({ conversation });
             try {
                 const stream = await this.openai_client.chat.completions.create(params);
                 return stream;
@@ -2443,12 +2950,6 @@ export default class CaretPlugin extends Plugin {
                 baseURL: custom_endpoint,
                 dangerouslyAllowBrowser: true,
             });
-            // custom_client.baseURL = basePath;
-            if (custom_api_key) {
-                const error_message = "API Key not configured for custom model. Restart the app if you just added it!";
-                new Notice(error_message);
-                throw new Error(error_message);
-            }
 
             if (!custom_endpoint) {
                 const error_message = "Custom endpoint not configured. Restart the app if you just added it!";
@@ -2701,7 +3202,6 @@ class CaretSettingTab extends PluginSettingTab {
         new Notice("Activating license...");
         this.plugin.settings.license_key = license;
         const activation_output = await validate_license_key(license);
-        console.log({ activation_output });
         if (!activation_output.status) {
             new Notice("Error in license activation. Please try again. ");
             new Notice("If it continues please contact Jake for help.");
@@ -2727,14 +3227,11 @@ class CaretSettingTab extends PluginSettingTab {
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
-        console.log("Running in dispaly");
         if (
             !this.plugin.settings.license_key ||
             !this.plugin.settings.license_hash ||
             !validateUUIDHashPair(this.plugin.settings.license_key, this.plugin.settings.license_hash)
         ) {
-            console.log("Are we in here at all?");
-            console.log(this.plugin.settings);
             new Setting(containerEl)
                 .setName("License Key")
                 .setDesc("Enter your license key here.")
@@ -2888,8 +3385,6 @@ class CaretSettingTab extends PluginSettingTab {
             ollama: "ollama",
         };
 
-        console.log(custom_endpoints);
-
         if (Object.keys(custom_endpoints).length > 0) {
             for (const [key, value] of Object.entries(custom_endpoints)) {
                 if (value.known_provider) {
@@ -2903,7 +3398,6 @@ class CaretSettingTab extends PluginSettingTab {
                 }
             }
         }
-        console.log({ llm_provider_options });
 
         let context_window = null;
         try {

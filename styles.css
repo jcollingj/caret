@@ -1,3 +1,4 @@
+
 .container {
     padding: 2px 15px;
     display: flex;
@@ -154,5 +155,24 @@
         height: 400px;
         resize: vertical;
 }
+.workflow_container {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: flex-start;
+    width: 100%;
+}
 
+.flex-row {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+}
 
+.w-8 {
+    width: 360px
+}
+.workflow_text_area {
+    height: 150px
+}
