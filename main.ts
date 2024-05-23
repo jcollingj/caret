@@ -436,7 +436,7 @@ interface CaretPluginSettings {
 }
 
 const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.25",
+    caret_version: "0.2.26",
     model: "gpt-4-turbo",
     llm_provider: "openai",
     openai_api_key: "",
@@ -869,9 +869,12 @@ class FullPageChat extends ItemView {
             if (match) {
                 const file_path = match[1];
                 const file = await this.app.vault.getFileByPath(file_path);
-                if (file) {
+                if (file && file_path.includes(".md")) {
                     const file_content = await this.app.vault.cachedRead(file);
                     modified_content += file_content; // Update modified_content instead of message.content
+                } else if (file && file_path.includes(".pdf")) {
+                    const pdf_content = await this.plugin.extractTextFromPDF(file_path);
+                    modified_content += `PDF File Name: ${file_path}\n ${pdf_content}`;
                 } else {
                     new Notice(`File not found: ${file_path}`);
                 }
@@ -2036,6 +2039,10 @@ version: 1
                 }
                 const view = currentLeaf.view;
                 const view_type = view.getViewType();
+                if (view_type !== "main-caret") {
+                    new Notice("This command only works in a chat window");
+                    return;
+                }
 
                 new InsertNoteModal(this.app, this, view).open();
             },
@@ -2162,7 +2169,7 @@ version: 1
                                 1
                             );
 
-                            await this.update_node_content(node_id, stream);
+                            await this.update_node_content(node_id, stream, this.settings.llm_provider);
                         } else {
                             const content = await this.llm_call(
                                 this.settings.llm_provider,
@@ -2199,21 +2206,21 @@ version: 1
         this.registerView(VIEW_NAME_SIDEBAR_CHAT, (leaf) => new SidebarChat(leaf));
         this.registerView(VIEW_NAME_MAIN_CHAT, (leaf) => new FullPageChat(this, leaf));
         // Define a command to insert text into the sidebar
-        this.addCommand({
-            id: "insert-text-into-sidebar",
-            name: "Insert Text into Sidebar",
-            hotkeys: [{ modifiers: ["Mod"], key: "l" }],
-            callback: () => {
-                const activeLeaf = this.app.workspace.activeLeaf;
-                if (activeLeaf) {
-                    const editor = activeLeaf.view instanceof MarkdownView ? activeLeaf.view.editor : null;
-                    if (editor) {
-                        const selectedText = editor.getSelection();
-                        this.insertTextIntoSidebar(selectedText);
-                    }
-                }
-            },
-        });
+        // this.addCommand({
+        //     id: "insert-text-into-sidebar",
+        //     name: "Insert Text into Sidebar",
+        //     hotkeys: [{ modifiers: ["Mod"], key: "l" }],
+        //     callback: () => {
+        //         const activeLeaf = this.app.workspace.activeLeaf;
+        //         if (activeLeaf) {
+        //             const editor = activeLeaf.view instanceof MarkdownView ? activeLeaf.view.editor : null;
+        //             if (editor) {
+        //                 const selectedText = editor.getSelection();
+        //                 this.insertTextIntoSidebar(selectedText);
+        //             }
+        //         }
+        //     },
+        // });
 
         // // Define a command to clear text from the sidebar
         // this.addCommand({
@@ -2226,7 +2233,7 @@ version: 1
         // });
         this.addCommand({
             id: "open-chat",
-            name: "Open Chat",
+            name: "Continue Chat",
             callback: async () => {
                 const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
                 if (editor) {
@@ -2279,8 +2286,8 @@ version: 1
         });
 
         this.addCommand({
-            id: "apply-diffs",
-            name: "Apply Diffs",
+            id: "apply-inline-changes",
+            name: "Apply Inline Changes",
             hotkeys: [{ modifiers: ["Mod"], key: "d" }],
             callback: () => {
                 const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
@@ -2508,24 +2515,28 @@ version: 1
                             const targetDiv = contentEl.querySelector(".markdown-embed-content.node-insert-event");
                             if (targetDiv) {
                                 let customDisplayDiv = contentEl.querySelector("#custom-display");
-                                if (!customDisplayDiv) {
-                                    customDisplayDiv = document.createElement("div");
-                                    customDisplayDiv.id = "custom-display";
-                                    customDisplayDiv.style.width = "100%";
-                                    customDisplayDiv.style.height = "40px";
-                                    customDisplayDiv.style.backgroundColor = "rgba(211, 211, 211, 0.8)";
-                                    customDisplayDiv.style.padding = "2px";
-                                    customDisplayDiv.style.paddingLeft = "8px";
-                                    customDisplayDiv.style.paddingTop = "4px";
-                                    targetDiv.parentNode.insertBefore(customDisplayDiv, targetDiv);
-                                }
+                                if (node.unknownData.role.length > 0) {
+                                    if (!customDisplayDiv) {
+                                        customDisplayDiv = document.createElement("div");
+                                        customDisplayDiv.id = "custom-display";
+                                        customDisplayDiv.style.width = "100%";
+                                        customDisplayDiv.style.height = "40px";
+                                        customDisplayDiv.style.backgroundColor = "rgba(211, 211, 211, 0.8)";
+                                        customDisplayDiv.style.padding = "2px";
+                                        customDisplayDiv.style.paddingLeft = "8px";
+                                        customDisplayDiv.style.paddingTop = "4px";
+                                        targetDiv.parentNode.insertBefore(customDisplayDiv, targetDiv);
+                                    }
 
-                                if (node.unknownData.role === "assistant") {
-                                    customDisplayDiv.textContent = "🤖";
-                                } else if (node.unknownData.role === "user") {
-                                    customDisplayDiv.textContent = "👤";
-                                } else if (node.unknownData.role === "system") {
-                                    customDisplayDiv.textContent = "🖥️";
+                                    if (node.unknownData.role === "assistant") {
+                                        customDisplayDiv.textContent = "🤖";
+                                        // console.log(node);
+                                        // node.color = "4";
+                                    } else if (node.unknownData.role === "user") {
+                                        customDisplayDiv.textContent = "👤";
+                                    } else if (node.unknownData.role === "system") {
+                                        customDisplayDiv.textContent = "🖥️";
+                                    }
                                 }
 
                                 node.unknownData.displayOverride = true;
@@ -2887,7 +2898,7 @@ version: 1
     add_new_node_button(menuEl: HTMLElement) {
         if (!menuEl.querySelector(".graph-menu-item")) {
             const graphButtonEl = createEl("button", "clickable-icon graph-menu-item");
-            setTooltip(graphButtonEl, "Create Node", { placement: "top" });
+            setTooltip(graphButtonEl, "Create User Message", { placement: "top" });
             setIcon(graphButtonEl, "lucide-workflow");
             graphButtonEl.addEventListener("click", async () => {
                 // Assuming canvasView is accessible here, or you need to pass it similarly
@@ -3485,7 +3496,6 @@ ${added_context}`;
         }
     }
     async update_node_content(node_id: string, stream: any, llm_provider: string) {
-        console.log("In Update node");
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
         // @ts-ignore
         if (!canvas_view?.canvas) {
