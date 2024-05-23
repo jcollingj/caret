@@ -436,7 +436,7 @@ interface CaretPluginSettings {
 }
 
 const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.26",
+    caret_version: "0.2.27",
     model: "gpt-4-turbo",
     llm_provider: "openai",
     openai_api_key: "",
@@ -863,21 +863,9 @@ class FullPageChat extends ItemView {
                 continue;
             }
 
-            // Check for text in double brackets and log the match
-            const bracket_regex = /\[\[(.*?)\]\]/g;
-            const match = bracket_regex.exec(modified_content);
-            if (match) {
-                const file_path = match[1];
-                const file = await this.app.vault.getFileByPath(file_path);
-                if (file && file_path.includes(".md")) {
-                    const file_content = await this.app.vault.cachedRead(file);
-                    modified_content += file_content; // Update modified_content instead of message.content
-                } else if (file && file_path.includes(".pdf")) {
-                    const pdf_content = await this.plugin.extractTextFromPDF(file_path);
-                    modified_content += `PDF File Name: ${file_path}\n ${pdf_content}`;
-                } else {
-                    new Notice(`File not found: ${file_path}`);
-                }
+            const block_ref_content = await this.plugin.get_ref_blocks_content(modified_content);
+            if (block_ref_content.length > 0) {
+                modified_content += `Referenced content:\n${block_ref_content}`;
             }
 
             const encoded_message = this.plugin.encoder.encode(modified_content);
@@ -2530,8 +2518,6 @@ version: 1
 
                                     if (node.unknownData.role === "assistant") {
                                         customDisplayDiv.textContent = "🤖";
-                                        // console.log(node);
-                                        // node.color = "4";
                                     } else if (node.unknownData.role === "user") {
                                         customDisplayDiv.textContent = "👤";
                                     } else if (node.unknownData.role === "system") {
@@ -3117,9 +3103,11 @@ version: 1
     async getAllAncestorsWithContext(nodes: Node[], edges: Edge[], nodeId: string): Promise<string> {
         let ancestors_context = "";
         let convo_total_tokens = 0;
+        const bracket_regex = /\[\[(.*?)\]\]/g;
 
         const findAncestorsWithContext = async (nodeId: string) => {
             const node = nodes.find((node) => node.id === nodeId);
+            const role = node.role;
             if (!node) return;
 
             const incomingEdges: Edge[] = edges.filter((edge) => edge.toNode === nodeId);
@@ -3130,8 +3118,28 @@ version: 1
                     let contextToAdd = "";
 
                     if (ancestor.type === "text") {
-                        if (!ancestor.text.includes("<role>")) {
-                            contextToAdd = ancestor.text + "\n";
+                        if (role.length === 0) {
+                            let ancestor_text = ancestor.text;
+
+                            // Check for text in double brackets and log the match
+
+                            const match = bracket_regex.exec(ancestor.text);
+                            if (match) {
+                                const file_path = match[1];
+                                const file = await this.app.vault.getFileByPath(file_path);
+                                if (file && file_path.includes(".md")) {
+                                    const file_content = await this.app.vault.cachedRead(file);
+                                    const md_file_content = `Markdown File: ${file_path}\n${file_content}`;
+                                    ancestor_text += md_file_content;
+                                } else if (file && file_path.includes(".pdf")) {
+                                    const pdf_content = await this.extractTextFromPDF(file_path);
+                                    ancestor_text += `PDF File Name: ${file_path}\n ${pdf_content}`;
+                                } else {
+                                    new Notice(`Checking ancestors - File not found: ${file_path}`);
+                                }
+                            } else {
+                                contextToAdd = ancestor.text + "\n";
+                            }
                         }
                     } else if (ancestor.type === "file" && ancestor.file && ancestor.file.includes(".md")) {
                         const file_path = ancestor.file;
@@ -3171,33 +3179,41 @@ version: 1
         return ancestors_context;
     }
 
-    async get_ref_blocks_content(node: any): Promise<string> {
+    async get_ref_blocks_content(node_text: any): Promise<string> {
+        const bracket_regex = /\[\[(.*?)\]\]/g;
         let rep_block_content = "";
-        let ref_blocks;
-        if (!node.text) {
-            return "";
-        }
-        try {
-            ref_blocks = node.text.match(/\[\[.*?\]\]/g) || [];
-        } catch (error) {
-            console.error(node);
-            console.error(node.text);
-            throw error;
-        }
 
-        const inner_texts = ref_blocks.map((block: string) => block.slice(2, -2));
-        const files = this.app.vault.getFiles();
+        let match;
+        const matches = [];
 
-        for (const file_name of inner_texts) {
-            const foundFile = files.find((file) => file.basename === file_name);
-            if (foundFile) {
-                const text = await this.app.vault.cachedRead(foundFile);
-                rep_block_content += `Title: ${file_name}\n${text}\n\n`;
+        while ((match = bracket_regex.exec(node_text)) !== null) {
+            matches.push(match);
+        }
+        for (const match of matches) {
+            let file_path = match[1];
+            if (!file_path.includes(".")) {
+                file_path += ".md";
+            }
+            let file = await this.app.vault.getFileByPath(file_path);
+
+            if (!file) {
+                const files = this.app.vault.getFiles();
+                let matchedFile = files.find((file) => file.name === file_path);
+                if (matchedFile) {
+                    file = matchedFile;
+                }
+            }
+            if (file && file_path.includes(".md")) {
+                const file_content = await this.app.vault.cachedRead(file);
+                rep_block_content += file_content; // Update modified_content instead of message.content
+            } else if (file && file_path.includes(".pdf")) {
+                const pdf_content = await this.extractTextFromPDF(file_path);
+                rep_block_content += `PDF File Name: ${file_path}\n ${pdf_content}`;
             } else {
-                console.error("File not found for:", file_name);
+                new Notice(`File not found: ${file_path}`);
             }
         }
-        rep_block_content = rep_block_content.trim();
+
         return rep_block_content;
     }
     async get_current_node(canvas: Canvas, node_id: string) {
@@ -3249,7 +3265,11 @@ version: 1
         node.unknownData.role = "user";
 
         // Add user xml if it's not there and re-fetch the node
-        const current_text = node.text;
+        let current_text = node.text;
+        // Check for text in double brackets and log the match
+
+        const ref_blocks_content = await this.get_ref_blocks_content(node.text);
+        current_text += ref_blocks_content;
 
         const canvas_data = canvas.getData();
         const { edges, nodes } = canvas_data;
@@ -3310,7 +3330,6 @@ version: 1
                                 provider: prompt_provider,
                                 temperature: prompt_temperature,
                             };
-                            console.log(sparkle_config);
 
                             const sparkle_promise = (async () => {
                                 if (prompt_delay > 0) {
@@ -3323,10 +3342,8 @@ version: 1
 
                             sparkle_promises.push(sparkle_promise);
                         }
-                        console.log("Sending prrallel promises");
 
                         await Promise.all(sparkle_promises);
-                        console.log("All promises back");
                         return;
                     } else if (caret_prompt === "linear") {
                         const xml_content = text.match(/```xml([\s\S]*?)```/)[1].trim();
@@ -3394,12 +3411,9 @@ version: 1
 
         // TODO - This needs to be cleaned up. Not sure what's going on with this
         // I would think it shoudl be plural. But it;'s only checking one node?
-        const ref_blocks = await this.get_ref_blocks_content(node);
+
         let added_context = ``;
 
-        if (ref_blocks.length > 1) {
-            added_context += `\n ${ref_blocks}`;
-        }
         added_context += "\n" + ancestors_with_context;
         added_context = added_context.trim();
         let convo_total_tokens = this.encoder.encode(added_context).length;
@@ -3419,6 +3433,8 @@ ${added_context}`;
             if (role === "user") {
                 let content = node.text;
                 // Only for the first node
+                const block_ref_content = await this.get_ref_blocks_content(content);
+                content += `Referenced content:\n${block_ref_content}`;
                 if (content && content.length > 0) {
                     const user_message_tokens = this.encoder.encode(content).length;
                     if (user_message_tokens + convo_total_tokens > this.settings.context_window) {
@@ -3484,11 +3500,8 @@ ${added_context}`;
         new_canvas_node.unknownData.role = "assistant";
 
         if (this.settings.llm_provider_options[provider][model].streaming) {
-            console.log("Streaming is true");
             const stream = await this.llm_call_streaming(provider, model, conversation, temperature);
             await this.update_node_content(new_node_id, stream, provider);
-            console.log("Back from updating");
-            console.log(new_node);
             return new_node;
         } else {
             const content = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
