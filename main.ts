@@ -436,7 +436,7 @@ interface CaretPluginSettings {
 }
 
 const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.27",
+    caret_version: "0.2.28",
     model: "gpt-4-turbo",
     llm_provider: "openai",
     openai_api_key: "",
@@ -3107,7 +3107,6 @@ version: 1
 
         const findAncestorsWithContext = async (nodeId: string) => {
             const node = nodes.find((node) => node.id === nodeId);
-            const role = node.role;
             if (!node) return;
 
             const incomingEdges: Edge[] = edges.filter((edge) => edge.toNode === nodeId);
@@ -3118,28 +3117,16 @@ version: 1
                     let contextToAdd = "";
 
                     if (ancestor.type === "text") {
+                        console.log("In type text");
+
+                        console.log(ancestor);
+                        const role = ancestor.role;
+                        console.log(role);
                         if (role.length === 0) {
                             let ancestor_text = ancestor.text;
-
-                            // Check for text in double brackets and log the match
-
-                            const match = bracket_regex.exec(ancestor.text);
-                            if (match) {
-                                const file_path = match[1];
-                                const file = await this.app.vault.getFileByPath(file_path);
-                                if (file && file_path.includes(".md")) {
-                                    const file_content = await this.app.vault.cachedRead(file);
-                                    const md_file_content = `Markdown File: ${file_path}\n${file_content}`;
-                                    ancestor_text += md_file_content;
-                                } else if (file && file_path.includes(".pdf")) {
-                                    const pdf_content = await this.extractTextFromPDF(file_path);
-                                    ancestor_text += `PDF File Name: ${file_path}\n ${pdf_content}`;
-                                } else {
-                                    new Notice(`Checking ancestors - File not found: ${file_path}`);
-                                }
-                            } else {
-                                contextToAdd = ancestor.text + "\n";
-                            }
+                            const block_ref_content = await this.get_ref_blocks_content(ancestor_text);
+                            ancestor_text += block_ref_content;
+                            contextToAdd += ancestor_text;
                         }
                     } else if (ancestor.type === "file" && ancestor.file && ancestor.file.includes(".md")) {
                         const file_path = ancestor.file;
@@ -3416,6 +3403,8 @@ version: 1
 
         added_context += "\n" + ancestors_with_context;
         added_context = added_context.trim();
+        console.log({ added_context, ancestors_with_context });
+
         let convo_total_tokens = this.encoder.encode(added_context).length;
         const current_message_content = `
 ${current_text}
@@ -3459,8 +3448,6 @@ ${added_context}`;
                 conversation.push(message);
             } else if (role === "system") {
                 local_system_prompt = node.text;
-            } else {
-                console.info("Moving over content");
             }
         }
         conversation.reverse();
