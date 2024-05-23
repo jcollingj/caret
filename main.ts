@@ -3652,11 +3652,24 @@ ${added_context}`;
                     throw new Error(error_message);
                 }
                 new Notice("Calling Anthropic");
+
+                // Extract system message content if it exists
+                let systemContent = "";
+                conversation = conversation.filter((message) => {
+                    if (message.role === "system") {
+                        systemContent = message.content;
+                        return false; // Remove the system message from the conversation
+                    }
+                    return true;
+                });
+
                 const body = {
                     model: this.settings.model,
                     max_tokens: 4096,
                     messages: conversation,
+                    system: systemContent, // Set the system parameter
                 };
+
                 const response = await requestUrl({
                     url: "https://api.anthropic.com/v1/messages",
                     method: "POST",
