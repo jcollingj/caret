@@ -18,7 +18,7 @@ export abstract class StepBase {
         this.step_name = step_name;
     }
 
-    // Placeholder for the abstract process method
+    // Placeholder for the abstract process method`
     abstract process(input: any): any;
 
     validate_input(input: any) {

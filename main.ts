@@ -379,7 +379,6 @@ class AgentPromptModal extends Modal {
     }
 
     async submitPrompt(prompt: string) {
-        console.log({ prompt });
         // Implement the logic to handle the prompt submission
 
         const input: StepPlanInput = {
@@ -387,9 +386,7 @@ class AgentPromptModal extends Modal {
         };
         const step: StepPlan = new StepPlan();
         const output: StepPlanOutput = await step.process(input);
-        console.log(output);
         const plan = output.nodes;
-        console.log(plan);
 
         this.plugin.execute_plan(plan, this.node_id);
         // You can add more logic here to handle the prompt submission as needed
@@ -439,7 +436,7 @@ interface CaretPluginSettings {
 }
 
 const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.22",
+    caret_version: "0.2.24",
     model: "gpt-4-turbo",
     llm_provider: "openai",
     openai_api_key: "",
@@ -888,11 +885,6 @@ class FullPageChat extends ItemView {
             total_context_length += message_length;
             valid_conversation.push({ ...message, content: modified_content }); // Push modified content in a hidden way
         }
-        console.log(this.plugin.settings.llm_provider_options);
-        console.log(this.plugin.settings.llm_provider_options[this.plugin.settings.llm_provider]);
-        console.log(
-            this.plugin.settings.llm_provider_options[this.plugin.settings.llm_provider][this.plugin.settings.model]
-        );
         if (
             this.plugin.settings.llm_provider_options[this.plugin.settings.llm_provider][this.plugin.settings.model]
                 .streaming
@@ -1309,13 +1301,11 @@ class LinearWorkflowEditor extends ItemView {
                 }
 
                 if (xml.root.system_prompt && xml.root.system_prompt.length > 0) {
-                    console.log(xml.root.system_prompt);
                     if (xml.root.system_prompt && xml.root.system_prompt[0] && xml.root.system_prompt[0]._) {
                         this.system_prompt = xml.root.system_prompt[0]._.trim();
                     } else {
                         this.system_prompt = "";
                     }
-                    console.log({ system_prompt: this.system_prompt });
                 } else {
                     this.system_prompt = "";
                 }
@@ -1450,7 +1440,6 @@ ${prompts_string}
         try {
             if (file) {
                 if (old_file_path !== file_path) {
-                    console.log("Does this work?");
                     await this.app.vault.rename(file, file_path);
                 }
                 await this.app.vault.modify(file, file_content);
@@ -1743,25 +1732,19 @@ export default class CaretPlugin extends Plugin {
             id: "test-log",
             name: "test",
             callback: () => {
-                console.log("Running log here");
                 const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
                 // @ts-ignore
                 if (!canvas_view?.canvas) {
                     return;
                 }
                 const canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
-                console.log(canvas);
 
                 const selection = canvas.selection;
-                console.log(selection);
                 const selection_iterator = selection.values();
                 const node = selection_iterator.next().value;
                 if (!node) {
                     return;
                 }
-                console.log("Node");
-                console.log(node);
-                console.log(node.contentEl);
                 return;
                 // Create a new <p> element
                 const pElement = document.createElement("p");
@@ -1773,7 +1756,6 @@ export default class CaretPlugin extends Plugin {
 
                 // Insert the <p> element into the target location
                 if (targetDiv) {
-                    console.log("Did this work?");
                     targetDiv.appendChild(pElement);
 
                     // Create a new <div> element
@@ -2083,9 +2065,7 @@ version: 1
 
                     let convo_total_tokens = 0;
 
-                    const context_window =
-                        this.settings.llm_provider_options[this.settings.llm_provider][this.settings.model]
-                            .context_window;
+                    const context_window = this.settings.context_window;
 
                     for (const obj of selection) {
                         const { x, y, height, width } = obj;
@@ -2097,17 +2077,16 @@ version: 1
                         if ("text" in obj) {
                             const { text } = obj;
                             const text_token_length = this.encoder.encode(text).length;
-                            if (convo_total_tokens + text_token_length > context_window) {
+                            if (convo_total_tokens + text_token_length < context_window) {
                                 all_text += text + "\n";
                                 convo_total_tokens += text_token_length;
                             } else {
-                                new Notice("Context window exceeded");
+                                new Notice("Context window exceeded - This is the message?");
                                 break;
                             }
                         } else if ("filePath" in obj) {
                             let { filePath } = obj;
                             const file = await this.app.vault.getFileByPath(filePath);
-                            console.log(file);
                             if (file.extension === "pdf") {
                                 const text = await this.extractTextFromPDF(file.name);
                                 const text_token_length = this.encoder.encode(text).length;
@@ -2115,13 +2094,10 @@ version: 1
                                     new Notice("Context window exceeded");
                                     break;
                                 }
-                                console.log(text);
-                                console.log(text.length);
                                 const file_text = `PDF Title: ${file.name}`;
                                 all_text += `${file_text} \n ${text}`;
                                 convo_total_tokens += text_token_length;
                             } else if (file?.extension === "md") {
-                                console.log("Does this execute?");
                                 const text = await this.app.vault.read(file);
                                 const text_token_length = this.encoder.encode(text).length;
                                 if (convo_total_tokens + text_token_length > context_window) {
@@ -2137,8 +2113,6 @@ version: 1
                             }
                         }
                     }
-                    console.log(convo_total_tokens);
-                    console.log({ all_text });
 
                     average_x = count > 0 ? total_x / count : 0;
                     average_y = count > 0 ? total_y / count : 0;
@@ -2177,14 +2151,26 @@ version: 1
                         const node = canvas.createTextNode(text_node_config);
                         const node_id = node.id;
 
-                        const stream: Message = await this.llm_call_streaming(
-                            this.settings.llm_provider,
-                            this.settings.model,
-                            conversation,
-                            1
-                        );
+                        if (
+                            this.settings.llm_provider_options[this.settings.llm_provider][this.settings.model]
+                                .streaming
+                        ) {
+                            const stream: Message = await this.llm_call_streaming(
+                                this.settings.llm_provider,
+                                this.settings.model,
+                                conversation,
+                                1
+                            );
 
-                        await this.update_node_content(node_id, stream);
+                            await this.update_node_content(node_id, stream);
+                        } else {
+                            const content = await this.llm_call(
+                                this.settings.llm_provider,
+                                this.settings.model,
+                                conversation
+                            );
+                            node.setText(content);
+                        }
                     };
                     modal.open();
                 }
@@ -3176,6 +3162,7 @@ version: 1
     }
     async getAllAncestorsWithContext(nodes: Node[], edges: Edge[], nodeId: string): Promise<string> {
         let ancestors_context = "";
+        let convo_total_tokens = 0;
 
         const findAncestorsWithContext = async (nodeId: string) => {
             const node = nodes.find((node) => node.id === nodeId);
@@ -3186,28 +3173,50 @@ version: 1
                 const edge = incomingEdges[i];
                 const ancestor = nodes.find((node) => node.id === edge.fromNode);
                 if (ancestor) {
+                    let contextToAdd = "";
+
                     if (ancestor.type === "text") {
                         if (!ancestor.text.includes("<role>")) {
-                            ancestors_context += ancestor.text + "\n";
+                            contextToAdd = ancestor.text + "\n";
                         }
                     } else if (ancestor.type === "file" && ancestor.file && ancestor.file.includes(".md")) {
                         const file_path = ancestor.file;
                         const file = this.app.vault.getFileByPath(file_path);
                         if (file) {
                             const context = await this.app.vault.cachedRead(file);
+
                             if (!context.includes("caret_prompt")) {
-                                ancestors_context += "\n" + context;
+                                contextToAdd = `\n\n---------------------------\n\nFile Title: ${file_path}\n${context}`;
                             }
                         } else {
                             console.error("File not found:", file_path);
                         }
+                    } else if (ancestor.type === "file" && ancestor.file && ancestor.file.includes(".pdf")) {
+                        console.log("PDF for context here");
+                        const file_name = ancestor.file;
+                        const text = await this.extractTextFromPDF(file_name);
+                        console.log(text.substring(0, 1000));
+                        contextToAdd = `\n\n---------------------------\n\nPDF File Title: ${file_name}\n${text}`;
                     }
+
+                    const contextTokens = this.encoder.encode(contextToAdd).length;
+                    if (convo_total_tokens + contextTokens > this.settings.context_window) {
+                        new Notice(
+                            "Exceeding context window while adding ancestor context. Stopping further additions."
+                        );
+                        return;
+                    }
+
+                    ancestors_context += contextToAdd;
+                    convo_total_tokens += contextTokens;
+
                     await findAncestorsWithContext(ancestor.id);
                 }
             }
         };
 
         await findAncestorsWithContext(nodeId);
+        console.log(ancestors_context);
         return ancestors_context;
     }
 
@@ -3328,7 +3337,7 @@ version: 1
                             const prompt_model = prompt.$?.model || "default";
                             const prompt_provider = prompt.$?.provider || "default";
                             const prompt_temperature = parseFloat(prompt.$?.temperature) || this.settings.temperature;
-                            const new_node_content = `<role>user</role>\n${prompt_content}`;
+                            const new_node_content = `${prompt_content}`;
                             const x = node.x + node.width + 200;
                             const y = highest_y + i * (100 + card_height); // Increment y for each prompt to distribute them vertically including card height
 
@@ -3343,6 +3352,8 @@ version: 1
                                 "left",
                                 "groq"
                             );
+                            user_node.unknownData.role = "user";
+                            user_node.unknownData.displayOverride = false;
 
                             const sparkle_config: SparkleConfig = {
                                 model: prompt_model,
@@ -3372,8 +3383,6 @@ version: 1
                         const system_prompt = system_prompt_list[0]._.trim();
 
                         const prompts = xml.root.prompt;
-                        console.log("---------------------------");
-                        console.log(prompts);
 
                         let current_node = node;
                         for (let i = 0; i < prompts.length; i++) {
@@ -3398,13 +3407,13 @@ version: 1
                                 "left",
                                 "groq"
                             );
-                            console.log({ system_prompt });
+                            user_node.unknownData.role = "user";
+                            user_node.unknownData.displayOverride = false;
                             const sparkle_config: SparkleConfig = {
                                 model: prompt_model,
                                 provider: prompt_provider,
                                 temperature: prompt_temperature,
                             };
-                            console.log({ sparkle_config });
                             if (prompt_delay > 0) {
                                 new Notice(`Waiting for ${prompt_delay} seconds...`);
                                 await new Promise((resolve) => setTimeout(resolve, prompt_delay * 1000));
@@ -3429,6 +3438,7 @@ version: 1
         const longest_lineage = this.getLongestLineage(nodes, edges, node.id);
 
         const ancestors_with_context = await this.getAllAncestorsWithContext(nodes, edges, node.id);
+
         // TODO - This needs to be cleaned up. Not sure what's going on with this
         // I would think it shoudl be plural. But it;'s only checking one node?
         const ref_blocks = await this.get_ref_blocks_content(node);
@@ -3439,47 +3449,23 @@ version: 1
         }
         added_context += "\n" + ancestors_with_context;
         added_context = added_context.trim();
-        let convo_total_tokens = this.encoder.encode(added_context);
-        let conversation = [];
+        let convo_total_tokens = this.encoder.encode(added_context).length;
+        const current_message_content = `
+${current_text}
 
-        for (let i = 0; i < longest_lineage.length; i++) {
+Please complete my above request using the below additional content:
+
+${added_context}`;
+
+        const current_message = { role: "user", content: current_message_content };
+        let conversation = [current_message];
+
+        for (let i = 1; i < longest_lineage.length; i++) {
             const node = longest_lineage[i];
-            console.log("COnversation node");
-            console.log(node);
-            let text = "";
             let role = node.role;
-            console.log({ role, text });
-            if (node.type === "text") {
-                text = node.text;
-            } else if (node.type === "file" && node.file.includes(".pdf")) {
-                const file_name = node.file;
-                // const files = await this.app.vault.getFiles();
-                // const foundFile = files.find((file) => file.basename === file_name);
-                text = await this.extractTextFromPDF(file_name);
-                const pdf_tokens = this.encoder.encode(text);
-                const pdf_tokens_length = pdf_tokens.length;
-                if (pdf_tokens_length + convo_total_tokens > this.settings.context_window) {
-                    new Notice("Context window exceeded while reading a PDF.");
-                    new Notice("Not sending LLM call due to context window being exceeded.");
-                    return;
-                }
-                convo_total_tokens += pdf_tokens;
-                added_context += text;
-                const role = "user";
-                const message = {
-                    role,
-                    content: text,
-                };
-                conversation.push(message);
-                continue;
-            }
-
             if (role === "user") {
-                let content = text;
+                let content = node.text;
                 // Only for the first node
-                if (added_context.length > 1 && i === 0) {
-                    content += `\n${added_context}`;
-                }
                 const user_message_tokens = this.encoder.encode(content).length;
                 if (user_message_tokens + convo_total_tokens > this.settings.context_window) {
                     new Notice("Exceeding context window while adding user message. Trimming content");
@@ -3489,9 +3475,13 @@ version: 1
                     role,
                     content,
                 };
-                conversation.push(message);
+                if (message.content.length > 0) {
+                    console.log("Adding to conversaion");
+                    conversation.push(message);
+                    convo_total_tokens += user_message_tokens;
+                }
             } else if (role === "assistant") {
-                const content = text;
+                const content = node.text;
                 const message = {
                     role,
                     content,
@@ -3499,7 +3489,9 @@ version: 1
                 conversation.push(message);
             } else if (role === "system") {
                 console.log("Adding system prompt!!");
-                local_system_prompt = text;
+                local_system_prompt = node.text;
+            } else {
+                console.info("Moving over content");
             }
         }
         conversation.reverse();
@@ -3523,8 +3515,6 @@ version: 1
         if (sparkle_config.temperature !== this.settings.temperature) {
             temperature = sparkle_config.temperature;
         }
-
-        const stream = await this.llm_call_streaming(provider, model, conversation, temperature);
         // const content = message.content;
         const node_content = ``;
         const x = node.x + node.width + 200;
@@ -3536,15 +3526,22 @@ version: 1
         if (!new_node_id) {
             throw new Error("Invalid node id");
         }
-        console.log({ new_node });
         const new_canvas_node = await this.get_node_by_id(canvas, new_node_id);
 
         if (!new_canvas_node.unknownData.hasOwnProperty("role")) {
             new_canvas_node.unknownData.role = "";
+            new_canvas_node.unknownData.displayOverride = false;
         }
         new_canvas_node.unknownData.role = "assistant";
-        await this.update_node_content(new_node_id, stream);
-        return new_node;
+
+        if (this.settings.llm_provider_options[this.settings.llm_provider][this.settings.model].streaming) {
+            const stream = await this.llm_call_streaming(provider, model, conversation, temperature);
+            await this.update_node_content(new_node_id, stream);
+            return new_node;
+        } else {
+            const content = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
+            new_node.setText(content);
+        }
     }
     async update_node_content(node_id: string, stream: any) {
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
@@ -3647,32 +3644,39 @@ version: 1
                 throw error;
             }
         } else if (provider == "anthropic") {
-            if (!this.anthropic_client) {
-                const error_message = "API Key not configured for Anthropic.  Restart the app if you just added it!";
-                new Notice(error_message);
-                throw new Error(error_message);
-            }
-            new Notice("Calling Anthropic");
-            const response = await requestUrl({
-                url: "https://api.anthropic.com/v1/messages",
-                method: "POST",
-                headers: {
-                    "x-api-key": this.settings.anthropic_api_key,
-                    "anthropic-version": "2023-06-01", // Add this line
-                    "content-type": "application/json", // Add this line
-                },
-                body: JSON.stringify({
+            try {
+                if (!this.anthropic_client) {
+                    const error_message =
+                        "API Key not configured for Anthropic.  Restart the app if you just added it!";
+                    new Notice(error_message);
+                    throw new Error(error_message);
+                }
+                new Notice("Calling Anthropic");
+                const body = {
                     model: this.settings.model,
-                    max_tokens: 1024,
+                    max_tokens: 4096,
                     messages: conversation,
-                }),
-            });
-
-            const completion = await response.json;
-            console.log(completion);
-            new Notice("Message back from Anthropic");
-            const message = completion.content[0].text;
-            return message;
+                };
+                const response = await requestUrl({
+                    url: "https://api.anthropic.com/v1/messages",
+                    method: "POST",
+                    headers: {
+                        "x-api-key": this.settings.anthropic_api_key,
+                        "anthropic-version": "2023-06-01", // Add this line
+                        "content-type": "application/json", // Add this line
+                    },
+                    body: JSON.stringify(body),
+                });
+                const completion = await response.json;
+                new Notice("Message back from Anthropic");
+                const message = completion.content[0].text;
+                return message;
+            } catch (error) {
+                console.error("Error during Anthropic call:");
+                console.error(error);
+                new Notice(`Error: ${error.message}`);
+                throw error;
+            }
         } else if (provider == "groq") {
             if (!this.groq_client) {
                 const error_message = "API Key not configured for Groq.  Restart the app if you just added it!";
@@ -3708,8 +3712,6 @@ version: 1
                 content: this.settings.system_prompt,
             });
         }
-        console.log("STREAMING CALL --- ");
-        console.log({ provider, model });
         if (provider === "ollama") {
             let model_param = model;
             new Notice("Calling ollama");
@@ -3947,9 +3949,7 @@ version: 1
         const canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
 
         const canvas_data = canvas.getData();
-        console.log({ canvas_data });
         const canvas_nodes = canvas_data.nodes;
-        console.log(agent_node_id);
 
         let agent_node;
 
@@ -3999,12 +3999,8 @@ version: 1
         async function adapter(node1: PlanNode, node2: PlanNode): Promise<any> {
             if (node1.type === "google_search" && node2.type === "get_websites_content") {
                 const search_results = await google_search(node1.input);
-                console.log(`Executing step: ${node2.type} with adapted input: ${search_results}`);
 
                 return search_results;
-            } else {
-                console.log(`Executing step: ${node1.type} with input: ${node1.input}`);
-                console.log(`Executing step: ${node2.type} with input: ${node2.input}`);
             }
         }
 
@@ -4019,13 +4015,11 @@ version: 1
             const current_node = sorted_nodes[i];
             const next_node = sorted_nodes[i + 1];
             let step_output;
-            console.log({ i });
 
             if (next_node && current_node.type === "google_search" && next_node.type === "get_websites_content") {
                 step_output = await adapter(current_node, next_node);
             } else {
                 if (current_node.type === "get_websites_content") {
-                    console.log("Executing in get websites contetn");
                     const step_input: StepGetWebsiteContentInput = {
                         list_of_websites_string: results[current_node.dependencies[0]].raw_output,
                     };
@@ -4034,10 +4028,7 @@ version: 1
                     step_output = run_step.text_nodes;
                 }
             }
-            console.log({ step_output, i });
             if (i === 0) {
-                console.log("Does this execute?");
-                console.log({ agent_node });
                 if (Array.isArray(step_output)) {
                     step_output = step_output.map((item) => String(item)).join(", ");
                 }
@@ -4059,9 +4050,6 @@ version: 1
                 const previous_node = results[previous_node_id];
                 const output_nodes = [];
                 if (Array.isArray(step_output)) {
-                    console.log("Iterating over the nodes");
-                    console.log({ step_output });
-
                     const total_nodes = step_output.length;
                     const median_index = Math.floor(total_nodes / 2);
                     const y_values = [];
@@ -4348,12 +4336,13 @@ class CaretSettingTab extends PluginSettingTab {
 
             return;
         }
+        if (this.plugin.settings.caret_version !== DEFAULT_SETTINGS.caret_version) {
+            this.plugin.settings.caret_version = DEFAULT_SETTINGS.caret_version;
+        }
 
         const default_llm_providers = DEFAULT_SETTINGS.llm_provider_options;
-        console.log({ default_llm_providers });
         const current_llm_providers = this.plugin.settings.llm_provider_options;
         const current_custom = current_llm_providers.custom;
-        console.log({ current_custom });
         this.plugin.settings.llm_provider_options = { ...default_llm_providers, custom: { ...current_custom } };
 
         const custom_endpoints = this.plugin.settings.custom_endpoints;
@@ -4405,7 +4394,6 @@ class CaretSettingTab extends PluginSettingTab {
                 ]
             ).map(([key, value]) => [key, value.name])
         );
-        console.log(model_options_data);
         // LLM Provider Settings
         new Setting(containerEl)
             // .setName("LLM Provider")
@@ -4421,8 +4409,6 @@ class CaretSettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.llm_provider)
                     .onChange(async (provider) => {
                         this.plugin.settings.llm_provider = provider;
-                        console.log(provider);
-                        console.log(this.plugin.settings.llm_provider_options);
                         this.plugin.settings.model = Object.keys(
                             this.plugin.settings.llm_provider_options[provider]
                         )[0];
