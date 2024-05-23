@@ -183,4 +183,41 @@
 .bottom-screen-padding {
     padding-bottom: 100px;
 }
+/* Add this CSS to your plugin's stylesheet */
+.clickable-icon.wand {
+    position: relative;
+    padding: 10px; /* Increase padding to make the button larger */
+}
+
+.submenu {
+    display: none;
+    position: absolute;
+    margin-top: 15px;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%); /* Center the submenu */
+    /* background-color: white; */
+    border: 1px solid #ccc;
+    z-index: 100000;
+    min-width: 150px;
+    grid-template-columns: repeat(4, 1fr); /* Up to four divs wide */
+    gap: 5px; /* Add some space between the icons */
+    padding: 2px; /* Add some padding around the grid */
+    background-color: #f0f0f0;
+    border-radius: 4px;
+}
+
+.submenu-item {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+}
+
+.submenu-item:hover {
+    /* background-color: #f0f0f0; */
+}
 

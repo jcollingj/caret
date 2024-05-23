@@ -1,5 +1,19 @@
+import {
+    StepGetWebsiteContent,
+    StepGetWebsiteContentInput,
+    StepGetWebsiteContentOutput,
+} from "steps/step_get_website_content";
+import { google_search } from "steps/step_serpapi";
+import { StepPlan, StepPlanInput, StepPlanOutput } from "./steps/step_plan";
+
+interface PlanNode {
+    id: number;
+    type: string;
+    input: string;
+    dependencies: number[];
+}
 // @ts-ignore
-import pdfjs from "@bundled-es-modules/pdfjs-dist/build/pdf";
+import pdfjs, { GlobalWorkerOptions } from "@bundled-es-modules/pdfjs-dist/build/pdf";
 import pdf_worker_code from "./workers/pdf.worker.js";
 
 // Create a Blob URL from the worker code
@@ -31,6 +45,7 @@ import {
     WorkspaceLeaf,
     setTooltip,
     setIcon,
+    requestUrl,
 } from "obsidian";
 import { CanvasFileData, CanvasNodeData, CanvasTextData } from "obsidian/canvas";
 import { Extension, RangeSetBuilder, StateField, Transaction } from "@codemirror/state";
@@ -124,12 +139,12 @@ Always apply markdown formatting. For keywords use the following:
 	- [ ] 
 `.trim();
         const conversation = [{ role: "user", content: content }];
-        const message = await this.plugin.llm_call(
+        const output_content = await this.plugin.llm_call(
             this.plugin.settings.llm_provider,
             this.plugin.settings.model,
             conversation
         );
-        return message.content;
+        return output_content;
     }
 
     insert_response(response: string, replace: boolean = false) {
@@ -318,6 +333,73 @@ export class InsertNoteModal extends Modal {
         contentEl.empty();
     }
 }
+class AgentPromptModal extends Modal {
+    plugin: any;
+    file_path: string;
+    agent_type: string;
+    node_id: string;
+
+    constructor(app: App, plugin: any, file_path: string, agent_type: string, node_id: string) {
+        super(app);
+        this.plugin = plugin;
+        this.file_path = file_path;
+        this.agent_type = agent_type;
+        this.node_id = node_id;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        const file_name = this.file_path.split("/").pop();
+
+        // Display agent name
+        const agentNameDisplay = contentEl.createEl("div", {
+            text: `Agent Name: ${file_name}`,
+        });
+        agentNameDisplay.style.fontWeight = "bold";
+        agentNameDisplay.style.marginBottom = "10px";
+
+        // Text area for prompt
+        const textArea = contentEl.createEl("textarea", {
+            placeholder: "Type your prompt here...",
+        });
+        textArea.style.width = "100%";
+        textArea.style.minHeight = "100px";
+        textArea.style.resize = "none";
+
+        // Submit button
+        const submitButton = contentEl.createEl("button", {
+            text: "Submit",
+        });
+        submitButton.style.marginTop = "10px";
+        submitButton.addEventListener("click", async () => {
+            const prompt = textArea.value;
+            await this.submitPrompt(prompt);
+            this.close();
+        });
+    }
+
+    async submitPrompt(prompt: string) {
+        console.log({ prompt });
+        // Implement the logic to handle the prompt submission
+
+        const input: StepPlanInput = {
+            user_input: prompt,
+        };
+        const step: StepPlan = new StepPlan();
+        const output: StepPlanOutput = await step.process(input);
+        console.log(output);
+        const plan = output.nodes;
+        console.log(plan);
+
+        this.plugin.execute_plan(plan, this.node_id);
+        // You can add more logic here to handle the prompt submission as needed
+    }
+
+    onClose() {
+        let { contentEl } = this;
+        contentEl.empty();
+    }
+}
 
 interface Models {
     name: string;
@@ -344,6 +426,7 @@ interface CaretPluginSettings {
     llm_provider: string;
     openai_api_key: string;
     groq_api_key: string;
+    open_router_key: string;
     anthropic_api_key: string;
     context_window: number;
     license_key: string;
@@ -362,6 +445,7 @@ const DEFAULT_SETTINGS: CaretPluginSettings = {
     openai_api_key: "",
     groq_api_key: "",
     anthropic_api_key: "",
+    open_router_key: "",
     context_window: 128000,
     license_key: "",
     license_hash: "",
@@ -422,6 +506,66 @@ const DEFAULT_SETTINGS: CaretPluginSettings = {
                 streaming: true,
             },
         },
+        anthropic: {
+            "claude-3-opus-20240229": {
+                name: "Claude 3 Opus",
+                context_window: 200000,
+                function_calling: true,
+                vision: true,
+                streaming: false,
+            },
+            "claude-3-sonnet-20240229": {
+                name: "Claude 3 Sonnet",
+                context_window: 200000,
+                function_calling: true,
+                vision: false,
+                streaming: false,
+            },
+            "claude-3-haiku-20240307": {
+                name: "Claude 3 Haiku",
+                context_window: 200000,
+                function_calling: true,
+                vision: true,
+                streaming: false,
+            },
+        },
+        openrouter: {
+            "anthropic/claude-3-opus": {
+                name: "Claude 3 Opus",
+                context_window: 200000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "anthropic/claude-3-sonnet": {
+                name: "Claude 3 Sonnet",
+                context_window: 200000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "anthropic/claude-3-haiku": {
+                name: "Claude 3 Haiku",
+                context_window: 200000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "google/gemini-flash-1.5": {
+                name: "Gemini Flash 1.5",
+                context_window: 2800000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "google/gemini-pro-1.5": {
+                name: "Gemini Pro 1.5",
+                context_window: 2800000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+        },
         ollama: {
             llama3: {
                 name: "llama3 8B",
@@ -458,6 +602,8 @@ const DEFAULT_SETTINGS: CaretPluginSettings = {
         openai: "OpenAI",
         groq: "Groq",
         ollama: "Ollama",
+        anthropic: "Anthropic",
+        openrouter: "OpenRouter",
         custom: "Custom",
     },
 };
@@ -742,14 +888,32 @@ class FullPageChat extends ItemView {
             total_context_length += message_length;
             valid_conversation.push({ ...message, content: modified_content }); // Push modified content in a hidden way
         }
-        const response = await this.plugin.llm_call_streaming(
-            this.plugin.settings.llm_provider,
-            this.plugin.settings.model,
-            valid_conversation
+        console.log(this.plugin.settings.llm_provider_options);
+        console.log(this.plugin.settings.llm_provider_options[this.plugin.settings.llm_provider]);
+        console.log(
+            this.plugin.settings.llm_provider_options[this.plugin.settings.llm_provider][this.plugin.settings.model]
         );
-        this.addMessage("", "assistant"); // Display the response
-        await this.streamMessage(response);
-        this.is_generating = false;
+        if (
+            this.plugin.settings.llm_provider_options[this.plugin.settings.llm_provider][this.plugin.settings.model]
+                .streaming
+        ) {
+            const response = await this.plugin.llm_call_streaming(
+                this.plugin.settings.llm_provider,
+                this.plugin.settings.model,
+                valid_conversation
+            );
+            this.addMessage("", "assistant"); // Display the response
+            await this.streamMessage(response);
+            this.is_generating = false;
+        } else {
+            const content = await this.plugin.llm_call(
+                this.plugin.settings.llm_provider,
+                this.plugin.settings.model,
+                valid_conversation
+            );
+            this.addMessage(content, "assistant");
+            this.is_generating = false;
+        }
     }
     focusAndPositionCursorInTextBox() {
         this.textBox.focus();
@@ -927,6 +1091,7 @@ class CustomModelModal extends Modal {
             .setDesc("Select this if it's a known endpoint like Ollama.")
             .addDropdown((dropdown) => {
                 dropdown.addOption("ollama", "Ollama");
+                dropdown.addOption("openrouter", "OpenRouter");
                 dropdown.setValue(this.known_provider).onChange((value) => {
                     this.known_provider = value;
                 });
@@ -970,7 +1135,7 @@ class CustomModelModal extends Modal {
                     streaming: true,
                     endpoint: this.url,
                     api_key: this.api_key,
-                    known_provider: this.known_provider === "ollama" ? "ollama" : "",
+                    known_provider: this.known_provider,
                 };
 
                 settings.custom_endpoints[this.model_id] = new_model;
@@ -1380,7 +1545,7 @@ ${prompts_string}
             cls: "provider_select row_items_spacing",
         });
         const settings: CaretPluginSettings = this.plugin.settings;
-        const provider_entries = Object.entries(settings.provider_dropdown_options);
+        const provider_entries = Object.entries(DEFAULT_SETTINGS.provider_dropdown_options);
 
         // Ensure the provider select has a default value set from the beginning
         if (provider_entries.length > 0) {
@@ -1524,6 +1689,15 @@ ${prompts_string}
         });
     }
 }
+function fetchWrapper(request: string | RequestUrlParam): Promise<Response> {
+    return requestUrl(request).then((response) => {
+        return new Response(response.arrayBuffer, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+        });
+    });
+}
 export default class CaretPlugin extends Plugin {
     settings: CaretPluginSettings;
     canvas_patched: boolean = false;
@@ -1532,6 +1706,7 @@ export default class CaretPlugin extends Plugin {
     openai_client: OpenAI;
     groq_client: Groq;
     anthropic_client: Anthropic;
+    openrouter_client: OpenAI;
     encoder: any;
 
     async onload() {
@@ -1545,23 +1720,78 @@ export default class CaretPlugin extends Plugin {
         }
         if (this.settings.anthropic_api_key) {
             this.anthropic_client = new Anthropic({
-                apiKey: this.settings.anthropic_api_key, // This is the default and can be omitted
+                apiKey: this.settings.anthropic_api_key,
+            });
+        }
+        if (this.settings.open_router_key) {
+            this.openrouter_client = new OpenAI({
+                baseURL: "https://openrouter.ai/api/v1",
+                apiKey: this.settings.open_router_key,
+                dangerouslyAllowBrowser: true,
             });
         }
 
         this.addSettingTab(new CaretSettingTab(this.app, this));
-        // this.addCommand({
-        //     id: "patch-menu",
-        //     name: "Patch Menu",
-        //     callback: async () => {
-        //         this.patchCanvasMenu();
-        //     },
-        // });
         this.addCommand({
             id: "add-custom-models",
             name: "Add Custom Models",
             callback: () => {
                 new CustomModelModal(this.app, this).open();
+            },
+        });
+        this.addCommand({
+            id: "test-log",
+            name: "test",
+            callback: () => {
+                console.log("Running log here");
+                const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
+                // @ts-ignore
+                if (!canvas_view?.canvas) {
+                    return;
+                }
+                const canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
+                console.log(canvas);
+
+                const selection = canvas.selection;
+                console.log(selection);
+                const selection_iterator = selection.values();
+                const node = selection_iterator.next().value;
+                if (!node) {
+                    return;
+                }
+                console.log("Node");
+                console.log(node);
+                console.log(node.contentEl);
+                return;
+                // Create a new <p> element
+                const pElement = document.createElement("p");
+                pElement.textContent = "This is a new paragraph.";
+
+                // Find the desired location to insert the <p> element
+                // const targetDiv = node.contentEl.querySelector(".markdown-preview-sizer.markdown-preview-section");
+                const targetDiv = node.contentEl.querySelector(".markdown-embed-content.node-insert-event");
+
+                // Insert the <p> element into the target location
+                if (targetDiv) {
+                    console.log("Did this work?");
+                    targetDiv.appendChild(pElement);
+
+                    // Create a new <div> element
+                    const redSquareDiv = document.createElement("div");
+                    redSquareDiv.textContent = "🤖";
+                    redSquareDiv.style.width = "100%";
+                    redSquareDiv.style.height = "40px";
+                    redSquareDiv.style.backgroundColor = "rgba(211, 211, 211, 0.8)"; // Li
+                    // redSquareDiv.style.position = "absolute";
+                    // redSquareDiv.style.top = "0";
+                    // redSquareDiv.style.left = "0";
+                    redSquareDiv.style.padding = "2px";
+
+                    // Insert the <div> before the targetDiv
+                    targetDiv.parentNode.insertBefore(redSquareDiv, targetDiv);
+                } else {
+                    console.error("Target div not found");
+                }
             },
         });
         this.addCommand({
@@ -1588,76 +1818,6 @@ export default class CaretPlugin extends Plugin {
                 this.app.workspace.revealLeaf(leaf);
             },
         });
-        // this.addCommand({
-        //     id: "create-graph-workflow",
-        //     name: "Create Graph Workflow",
-        //     callback: () => {
-        //         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
-        //         // @ts-ignore
-        //         if (!canvas_view?.canvas) {
-        //             return;
-        //         }
-        //         const canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
-
-        //         const selection = canvas.selection;
-
-        //         const selected_ids = [];
-        //         const selection_iterator = selection.values();
-        //         for (const node of selection_iterator) {
-        //             selected_ids.push(node.id);
-        //         }
-        //         const canvas_data = canvas.getData();
-        //         const { nodes, edges } = canvas;
-
-        //         // Filter nodes and edges based on selected IDs
-        //         const selected_nodes = [];
-        //         for (const node of nodes.values()) {
-        //             if (selected_ids.includes(node.id)) {
-        //                 selected_nodes.push(node);
-        //             }
-        //         }
-
-        //         const selected_edges = [];
-        //         for (const edge of edges.values()) {
-        //             if (selected_ids.includes(edge.from.node.id) && selected_ids.includes(edge.to.node.id)) {
-        //                 selected_edges.push(edge);
-        //             }
-        //         }
-
-        //         // Create a map to store node relationships
-        //         const node_map = new Map();
-
-        //         // Initialize the map with selected nodes
-        //         selected_nodes.forEach((node) => {
-        //             node_map.set(node.id, {
-        //                 id: node.id,
-        //                 content: node.text,
-        //                 parents: [],
-        //                 children: [],
-        //             });
-        //         });
-
-        //         // Populate parent and child relationships
-        //         selected_edges.forEach((edge) => {
-        //             const from_node = node_map.get(edge.from.node.id);
-        //             const to_node = node_map.get(edge.to.node.id);
-        //             if (from_node && to_node) {
-        //                 from_node.children.push(to_node.id);
-        //                 to_node.parents.push(from_node.id);
-        //             }
-        //         });
-
-        //         // Convert the node_map to the desired JSON format
-        //         const workflow = {
-        //             nodes: Array.from(node_map.values()).map((node) => ({
-        //                 id: node.id,
-        //                 children: node.children,
-        //             })),
-        //         };
-
-        //         // Log the workflow in JSON format
-        //     },
-        // });
         this.addCommand({
             id: "create-linear-workflow",
             name: "Create Linear Workflow From Canvas",
@@ -1859,8 +2019,6 @@ version: 1
 
                 if (currentLeaf?.view.getViewType() === "canvas") {
                     const canvas = currentLeaf.view;
-                    // this.canvas_patched = false;
-
                     this.patchCanvasMenu();
                 }
             })
@@ -1910,6 +2068,7 @@ version: 1
                     const canvasView = currentLeaf.view;
                     const canvas = (canvasView as any).canvas;
                     const selection = canvas.selection;
+
                     let average_x = 0;
                     let average_y = 0;
                     let average_height = 0;
@@ -1921,6 +2080,13 @@ version: 1
                     let total_height = 0;
                     let total_width = 0;
                     let all_text = "";
+
+                    let convo_total_tokens = 0;
+
+                    const context_window =
+                        this.settings.llm_provider_options[this.settings.llm_provider][this.settings.model]
+                            .context_window;
+
                     for (const obj of selection) {
                         const { x, y, height, width } = obj;
                         total_x += x;
@@ -1930,20 +2096,49 @@ version: 1
                         count++;
                         if ("text" in obj) {
                             const { text } = obj;
-                            all_text += text + "\n";
+                            const text_token_length = this.encoder.encode(text).length;
+                            if (convo_total_tokens + text_token_length > context_window) {
+                                all_text += text + "\n";
+                                convo_total_tokens += text_token_length;
+                            } else {
+                                new Notice("Context window exceeded");
+                                break;
+                            }
                         } else if ("filePath" in obj) {
                             let { filePath } = obj;
                             const file = await this.app.vault.getFileByPath(filePath);
-                            if (file) {
+                            console.log(file);
+                            if (file.extension === "pdf") {
+                                const text = await this.extractTextFromPDF(file.name);
+                                const text_token_length = this.encoder.encode(text).length;
+                                if (convo_total_tokens + text_token_length > context_window) {
+                                    new Notice("Context window exceeded");
+                                    break;
+                                }
+                                console.log(text);
+                                console.log(text.length);
+                                const file_text = `PDF Title: ${file.name}`;
+                                all_text += `${file_text} \n ${text}`;
+                                convo_total_tokens += text_token_length;
+                            } else if (file?.extension === "md") {
+                                console.log("Does this execute?");
                                 const text = await this.app.vault.read(file);
+                                const text_token_length = this.encoder.encode(text).length;
+                                if (convo_total_tokens + text_token_length > context_window) {
+                                    new Notice("Context window exceeded");
+                                    break;
+                                }
                                 const file_text = `
                                 Title: ${filePath.replace(".md", "")}
                                 ${text}
                                 `.trim();
                                 all_text += file_text;
+                                convo_total_tokens += text_token_length;
                             }
                         }
                     }
+                    console.log(convo_total_tokens);
+                    console.log({ all_text });
 
                     average_x = count > 0 ? total_x / count : 0;
                     average_y = count > 0 ? total_y / count : 0;
@@ -1985,7 +2180,8 @@ version: 1
                         const stream: Message = await this.llm_call_streaming(
                             this.settings.llm_provider,
                             this.settings.model,
-                            conversation
+                            conversation,
+                            1
                         );
 
                         await this.update_node_content(node_id, stream);
@@ -2238,6 +2434,18 @@ version: 1
         }
         // @ts-ignore
         const canvas = canvasView.canvas;
+        const nodes = canvas.nodes;
+
+        for (const node of nodes.values()) {
+            if (node.unknownData) {
+                if (!node.unknownData.role) {
+                    node.unknownData.role = "";
+                }
+                if (node.unknownData.displayOverride) {
+                    node.unknownData.displayOverride = false;
+                }
+            }
+        }
 
         const menu = canvas.menu;
         if (!menu) {
@@ -2245,12 +2453,18 @@ version: 1
             return;
         }
         const that = this; // Capture the correct 'this' context.
+
         const menuUninstaller = around(menu.constructor.prototype, {
             render: (next: any) =>
-                function (...args: any) {
-                    const result = next.call(this, ...args);
+                async function (...args: any) {
+                    const result = await next.call(this, ...args);
+
                     that.add_new_node_button(this.menuEl);
+
                     that.add_sparkle_button(this.menuEl);
+                    that.add_extra_actions(this.menuEl);
+
+                    // await that.add_agent_button(this.menuEl);
 
                     return result;
                 },
@@ -2282,6 +2496,114 @@ version: 1
                     }
 
                     next.call(this, event);
+                },
+            // rerenderViewport: (next: any) =>
+            //     function (...args: any) {
+            //         console.log("rerenderViewport called with arguments:", args);
+            //         const result = next.call(this, ...args);
+            //         console.log("rerenderViewport event:", result);
+            //         return result;
+            //     },
+            // renderSnapPoints: (next: any) =>
+            //     function (...args: any) {
+            //         console.log("renderSnapPoints called with arguments:", args);
+            //         const result = next.call(this, ...args);
+            //         console.log("renderSnapPoints event:", result);
+            //         return result;
+            //     },
+            // setViewport: (next: any) =>
+            //     function (...args: any) {
+            //         console.log("setViewport called with arguments:", args);
+            //         const result = next.call(this, ...args);
+            //         console.log("setViewport event:", result);
+            //         return result;
+            //     },
+            // getData: (next: any) =>
+            //     function (...args: any) {
+            //         console.log("getData called with arguments:", args);
+            //         const result = next.call(this, ...args);
+            //         console.log("getData result:", result);
+            //         return result;
+            //     },
+            // getState: (next: any) =>
+            //     function (...args: any) {
+            //         console.log("getState called with arguments:", args);
+            //         const result = next.call(this, ...args);
+            //         console.log("getState result:", result);
+            //         return result;
+            //     },
+            // getViewportNodes: (next: any) =>
+            //     function (...args: any) {
+            //         console.log("getViewportNodes called with arguments:", args);
+            //         const result = next.call(this, ...args);
+            //         console.log("getViewportNodes result:", result);
+            //         return result;
+            //     },
+            // load: (next: any) =>
+            //     function (...args: any) {
+            //         console.log("load called with arguments:", args);
+            //         const result = next.call(this, ...args);
+            //         console.log("load result:", result);
+            //         return result;
+            //     },
+            // markViewportChanged: (next: any) =>
+            //     function (...args: any) {
+            //         console.log("markViewportChanged called with arguments:", args);
+            //         const result = next.call(this, ...args);
+            //         console.log("markViewportChanged result:", result);
+            //         return result;
+            //     },
+            requestFrame: (next: any) =>
+                function (...args: any) {
+                    const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
+                    // @ts-ignore
+                    if (!canvas_view?.canvas) {
+                        return;
+                    }
+                    const canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
+                    const nodes = canvas.nodes;
+
+                    for (const node of nodes.values()) {
+                        if (node.unknownData) {
+                            if (!node.unknownData.role) {
+                                node.unknownData.role = "";
+                            }
+                            if (!node.unknownData.displayOverride) {
+                                node.unknownData.displayOverride = false;
+                            }
+                        }
+                        const contentEl = node.contentEl;
+                        if (contentEl) {
+                            const targetDiv = contentEl.querySelector(".markdown-embed-content.node-insert-event");
+                            if (targetDiv) {
+                                let customDisplayDiv = contentEl.querySelector("#custom-display");
+                                if (!customDisplayDiv) {
+                                    customDisplayDiv = document.createElement("div");
+                                    customDisplayDiv.id = "custom-display";
+                                    customDisplayDiv.style.width = "100%";
+                                    customDisplayDiv.style.height = "40px";
+                                    customDisplayDiv.style.backgroundColor = "rgba(211, 211, 211, 0.8)";
+                                    customDisplayDiv.style.padding = "2px";
+                                    customDisplayDiv.style.paddingLeft = "8px";
+                                    customDisplayDiv.style.paddingTop = "4px";
+                                    targetDiv.parentNode.insertBefore(customDisplayDiv, targetDiv);
+                                }
+
+                                if (node.unknownData.role === "assistant") {
+                                    customDisplayDiv.textContent = "🤖";
+                                } else if (node.unknownData.role === "user") {
+                                    customDisplayDiv.textContent = "👤";
+                                } else if (node.unknownData.role === "system") {
+                                    customDisplayDiv.textContent = "🖥️";
+                                }
+
+                                node.unknownData.displayOverride = true;
+                            }
+                        }
+                    }
+
+                    const result = next.call(this, ...args);
+                    return result;
                 },
         };
         const doubleClickPatcher = around(canvas.constructor.prototype, functions);
@@ -2636,7 +2958,7 @@ version: 1
             const graphButtonEl = createEl("button", "clickable-icon graph-menu-item");
             setTooltip(graphButtonEl, "Create Node", { placement: "top" });
             setIcon(graphButtonEl, "lucide-workflow");
-            graphButtonEl.addEventListener("click", () => {
+            graphButtonEl.addEventListener("click", async () => {
                 // Assuming canvasView is accessible here, or you need to pass it similarly
                 const canvasView = this.app.workspace.getLeavesOfType("canvas").first()?.view;
                 const view = this.app.workspace.getMostRecentLeaf()?.view;
@@ -2650,8 +2972,99 @@ version: 1
                 const selectionIterator = selection.values();
                 const node = selectionIterator.next().value;
                 const x = node.x + node.width + 200;
-                this.childNode(canvas, node, x, node.y, "<role>user</role>");
+                const new_node = await this.childNode(canvas, node, x, node.y, "");
+                console.log({ new_node });
+                new_node.unknownData.role = "user";
             });
+            menuEl.appendChild(graphButtonEl);
+        }
+    }
+    add_extra_actions(menuEl: HTMLElement) {
+        if (!menuEl.querySelector(".wand")) {
+            const graphButtonEl = createEl("button", "clickable-icon wand");
+            setTooltip(graphButtonEl, "Actions", { placement: "top" });
+            setIcon(graphButtonEl, "lucide-wand");
+
+            interface SubmenuItemConfig {
+                name: string;
+                icon: string;
+                tooltip: string;
+                callback: () => void;
+            }
+
+            function createSubmenu(configs: SubmenuItemConfig[]): HTMLElement {
+                const submenuEl = createEl("div", { cls: "submenu" });
+
+                configs.forEach((config) => {
+                    const submenuItem = createEl("div", { cls: "submenu-item" });
+                    const iconEl = createEl("span", { cls: "clickable-icon" });
+                    setIcon(iconEl, config.icon);
+                    setTooltip(iconEl, config.tooltip, { placement: "top" });
+                    submenuItem.appendChild(iconEl);
+                    submenuItem.addEventListener("click", config.callback);
+                    submenuEl.appendChild(submenuItem);
+                });
+
+                return submenuEl;
+            }
+            const canvasView = this.app.workspace.getLeavesOfType("canvas").first()?.view;
+            const view = this.app.workspace.getMostRecentLeaf()?.view;
+            // @ts-ignore
+            if (!view?.canvas) {
+                return;
+            }
+            // @ts-ignore
+            const canvas = view.canvas;
+            const selection = canvas.selection;
+            const selectionIterator = selection.values();
+            const node = selectionIterator.next().value;
+
+            const submenuConfigs: SubmenuItemConfig[] = [
+                {
+                    name: "User",
+                    icon: "lucide-user",
+                    tooltip: "Set role to user",
+                    callback: () => {
+                        console.log(node);
+                        node.unknownData.role = "user";
+                        node.unknownData.displayOverride = false;
+                        canvas.requestFrame();
+                    },
+                },
+                {
+                    name: "Assistant",
+                    icon: "lucide-bot",
+                    tooltip: "Set role to assistant",
+                    callback: () => {
+                        node.unknownData.role = "assistant";
+                        node.unknownData.displayOverride = false;
+                        canvas.requestFrame();
+                    },
+                },
+                {
+                    name: "System Prompt",
+                    icon: "lucide-monitor-check",
+                    tooltip: "Set system prompt",
+                    callback: () => {
+                        node.unknownData.role = "system";
+                        node.unknownData.displayOverride = false;
+                        canvas.requestFrame();
+                    },
+                },
+            ];
+
+            const submenuEl = createSubmenu(submenuConfigs);
+
+            // Append the submenu to the main button
+            graphButtonEl.appendChild(submenuEl);
+
+            let submenuVisible = false;
+
+            graphButtonEl.addEventListener("click", () => {
+                submenuVisible = !submenuVisible;
+                submenuEl.style.display = submenuVisible ? "grid" : "none";
+            });
+
             menuEl.appendChild(graphButtonEl);
         }
     }
@@ -2859,8 +3272,7 @@ version: 1
             temperature: 1,
         }
     ) {
-        const userRegex = /<role>User<\/role>/i;
-        const assistantRegex = /<role>assistant<\/role>/i;
+        let local_system_prompt = system_prompt;
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
         // @ts-ignore
         if (!canvas_view || !canvas_view.canvas) {
@@ -2874,15 +3286,12 @@ version: 1
             console.error("Node not found with ID:", node_id);
             return;
         }
+        console.log(node);
+        node.unknownData.role = "user";
+        console.log("--- HEre??");
 
         // Add user xml if it's not there and re-fetch the node
         const current_text = node.text;
-        if (!userRegex.test(current_text) && !node.hasOwnProperty("file")) {
-            const modified_text = `<role>user</role>\n${current_text}`;
-            node.setText(modified_text);
-            await new Promise((resolve) => setTimeout(resolve, 200));
-            node = await this.get_current_node(canvas, node_id); // Re-fetch the node to get the latest data
-        }
 
         const canvas_data = canvas.getData();
         const { edges, nodes } = canvas_data;
@@ -3035,7 +3444,11 @@ version: 1
 
         for (let i = 0; i < longest_lineage.length; i++) {
             const node = longest_lineage[i];
+            console.log("COnversation node");
+            console.log(node);
             let text = "";
+            let role = node.role;
+            console.log({ role, text });
             if (node.type === "text") {
                 text = node.text;
             } else if (node.type === "file" && node.file.includes(".pdf")) {
@@ -3052,7 +3465,7 @@ version: 1
                 }
                 convo_total_tokens += pdf_tokens;
                 added_context += text;
-                const role = "assistant";
+                const role = "user";
                 const message = {
                     role,
                     content: text,
@@ -3061,10 +3474,8 @@ version: 1
                 continue;
             }
 
-            if (userRegex.test(text)) {
-                const split_text = text.split(userRegex);
-                const role = "user";
-                let content = split_text[1].trim();
+            if (role === "user") {
+                let content = text;
                 // Only for the first node
                 if (added_context.length > 1 && i === 0) {
                     content += `\n${added_context}`;
@@ -3079,21 +3490,21 @@ version: 1
                     content,
                 };
                 conversation.push(message);
-            }
-            if (assistantRegex.test(text)) {
-                const split_text = text.split(assistantRegex);
-                const role = "assistant";
-                const content = split_text[1].trim();
+            } else if (role === "assistant") {
+                const content = text;
                 const message = {
                     role,
                     content,
                 };
                 conversation.push(message);
+            } else if (role === "system") {
+                console.log("Adding system prompt!!");
+                local_system_prompt = text;
             }
         }
         conversation.reverse();
-        if (system_prompt.length > 0) {
-            conversation.unshift({ role: "system", content: system_prompt });
+        if (local_system_prompt.length > 0) {
+            conversation.unshift({ role: "system", content: local_system_prompt });
             console.log("System prompt is added");
         } else {
             console.log("No system prompt added");
@@ -3113,10 +3524,9 @@ version: 1
             temperature = sparkle_config.temperature;
         }
 
-        // const message = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
         const stream = await this.llm_call_streaming(provider, model, conversation, temperature);
         // const content = message.content;
-        const node_content = `<role>assistant</role>\n`;
+        const node_content = ``;
         const x = node.x + node.width + 200;
         const new_node = await this.childNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
         if (!new_node) {
@@ -3126,6 +3536,13 @@ version: 1
         if (!new_node_id) {
             throw new Error("Invalid node id");
         }
+        console.log({ new_node });
+        const new_canvas_node = await this.get_node_by_id(canvas, new_node_id);
+
+        if (!new_canvas_node.unknownData.hasOwnProperty("role")) {
+            new_canvas_node.unknownData.role = "";
+        }
+        new_canvas_node.unknownData.role = "assistant";
         await this.update_node_content(new_node_id, stream);
         return new_node;
     }
@@ -3150,7 +3567,8 @@ version: 1
         if (
             this.settings.llm_provider === "openai" ||
             this.settings.llm_provider === "groq" ||
-            this.settings.llm_provider === "custom"
+            this.settings.llm_provider === "custom" ||
+            this.settings.llm_provider === "openrouter"
         ) {
             for await (const part of stream) {
                 const delta_content = part.choices[0]?.delta.content || "";
@@ -3158,12 +3576,12 @@ version: 1
                 const current_text = node.text;
                 const new_content = `${current_text}${delta_content}`;
                 const word_count = new_content.split(/\s+/).length;
-                const number_of_lines = Math.ceil(word_count / 10);
+                const number_of_lines = Math.ceil(word_count / 7);
                 if (word_count > 500) {
                     node.width = 750;
-                    node.height = Math.max(100, number_of_lines * 25);
+                    node.height = Math.max(200, number_of_lines * 35);
                 } else {
-                    node.height = Math.max(100, number_of_lines * 30);
+                    node.height = Math.max(200, number_of_lines * 45);
                 }
 
                 node.setText(new_content);
@@ -3178,9 +3596,9 @@ version: 1
                 const number_of_lines = Math.ceil(word_count / 10);
                 if (word_count > 500) {
                     node.width = 750;
-                    node.height = Math.max(100, number_of_lines * 25);
+                    node.height = Math.max(200, number_of_lines * 25);
                 } else {
-                    node.height = Math.max(100, number_of_lines * 30);
+                    node.height = Math.max(200, number_of_lines * 30);
                 }
 
                 node.setText(new_content);
@@ -3189,7 +3607,7 @@ version: 1
         }
     }
 
-    async llm_call(provider: string, model: string, conversation: any[]): Promise<Message> {
+    async llm_call(provider: string, model: string, conversation: any[]): Promise<string> {
         if (provider === "ollama") {
             let model_param = model;
             new Notice("Calling ollama");
@@ -3199,7 +3617,7 @@ version: 1
                     messages: conversation,
                 });
                 new Notice("Message back from ollama");
-                return response.message;
+                return response.message.content;
             } catch (error) {
                 console.error(error);
                 if (error.message) {
@@ -3222,12 +3640,39 @@ version: 1
                 const completion = await this.openai_client.chat.completions.create(params);
                 new Notice("Message back from OpenAI");
                 const message = completion.choices[0].message as Message;
-                return message;
+                return message.content;
             } catch (error) {
                 console.error("Error fetching chat completion from OpenAI:", error);
                 new Notice(error.message);
                 throw error;
             }
+        } else if (provider == "anthropic") {
+            if (!this.anthropic_client) {
+                const error_message = "API Key not configured for Anthropic.  Restart the app if you just added it!";
+                new Notice(error_message);
+                throw new Error(error_message);
+            }
+            new Notice("Calling Anthropic");
+            const response = await requestUrl({
+                url: "https://api.anthropic.com/v1/messages",
+                method: "POST",
+                headers: {
+                    "x-api-key": this.settings.anthropic_api_key,
+                    "anthropic-version": "2023-06-01", // Add this line
+                    "content-type": "application/json", // Add this line
+                },
+                body: JSON.stringify({
+                    model: this.settings.model,
+                    max_tokens: 1024,
+                    messages: conversation,
+                }),
+            });
+
+            const completion = await response.json;
+            console.log(completion);
+            new Notice("Message back from Anthropic");
+            const message = completion.content[0].text;
+            return message;
         } else if (provider == "groq") {
             if (!this.groq_client) {
                 const error_message = "API Key not configured for Groq.  Restart the app if you just added it!";
@@ -3244,7 +3689,7 @@ version: 1
                 const completion = await this.groq_client.chat.completions.create(params);
                 new Notice("Message back from Groq");
                 const message = completion.choices[0].message as Message;
-                return message;
+                return message.content;
             } catch (error) {
                 console.error("Error fetching chat completion from OpenAI:", error);
                 new Notice(error.message);
@@ -3263,6 +3708,8 @@ version: 1
                 content: this.settings.system_prompt,
             });
         }
+        console.log("STREAMING CALL --- ");
+        console.log({ provider, model });
         if (provider === "ollama") {
             let model_param = model;
             new Notice("Calling ollama");
@@ -3302,6 +3749,27 @@ version: 1
                 new Notice(error.message);
                 throw error;
             }
+        } else if (provider == "openrouter") {
+            if (!this.openrouter_client) {
+                const error_message = "API Key not configured for OpenRouter. Restart the app if you just added it!";
+                new Notice(error_message);
+                throw new Error(error_message);
+            }
+            new Notice("Calling OpenRouter");
+            const params = {
+                messages: conversation,
+                model: model,
+                stream: true,
+                temperature: temperature,
+            };
+            try {
+                const stream = await this.openrouter_client.chat.completions.create(params);
+                return stream;
+            } catch (error) {
+                console.error("Error fetching chat completion from OpenRouter:", error);
+                new Notice(error.message);
+                throw error;
+            }
         } else if (provider == "groq") {
             if (!this.groq_client) {
                 const error_message = "API Key not configured for Groq.  Restart the app if you just added it!";
@@ -3324,29 +3792,30 @@ version: 1
                 new Notice(error.message);
                 throw error;
             }
-            // } else if (provider == "anthropic") {
-            //     if (!this.anthropic_client) {
-            //         const error_message = "API key not configured for Anthropic. Restart the app if you just added it!";
-            //         new Notice(error_message);
-            //         throw new Error(error_message);
-            //     }
-            //     new Notice("Calling Anthropic");
-            //     // const max_tokens = this.settings.context_window -
+        } else if (provider == "anthropic") {
+            new Notice("Error: Anthropic Streaming not supported");
+            // if (!this.anthropic_client) {
+            //     const error_message = "API key not configured for Anthropic. Restart the app if you just added it!";
+            //     new Notice(error_message);
+            //     throw new Error(error_message);
+            // }
+            // new Notice("Calling Anthropic");
 
-            //     const params = {
-            //         messages: conversation,
-            //         model: model,
-            //         stream: true,
-            //         max_tokens: 4096,
-            //     };
-            //     try {
-            //         const stream = await this.anthropic_client.messages.create(params);
-            //         return stream;
-            //     } catch (error) {
-            //         console.error("Error fetching chat completion from Anthropic:", error);
-            //         new Notice(error.message);
-            //         throw error;
-            //     }
+            // const params = {
+            //     messages: conversation,
+            //     model: model,
+            //     stream: false,
+            //     max_tokens: 4096,
+            // };
+
+            // try {
+            //     const stream = await this.anthropic_client.messages.create(params);
+            //     return stream;
+            // } catch (error) {
+            //     console.error("Error fetching chat completion from Anthropic:", error);
+            //     new Notice(error.message || "An unknown error occurred while fetching chat completion from Anthropic.");
+            //     throw error;
+            // }
         } else if (provider == "custom") {
             new Notice("Calling Custom Client");
             const custom_model = this.settings.model;
@@ -3417,6 +3886,212 @@ version: 1
             menuEl.appendChild(buttonEl);
         }
     }
+    // async add_agent_button(menuEl: HTMLElement) {
+    //     if (menuEl.querySelector(".agent_button")) {
+    //         return; // Exit if the button already exists
+    //     }
+
+    //     const buttonEl = createEl("button", "clickable-icon agent_button");
+
+    //     setTooltip(buttonEl, "Agent Prompt", { placement: "top" });
+    //     setIcon(buttonEl, "lucide-bot");
+
+    //     // @ts-ignore
+    //     const canvasView = this.app.workspace.getMostRecentLeaf()?.view;
+    //     // @ts-ignore
+    //     if (!canvasView?.canvas) {
+    //         return;
+    //     }
+
+    //     const canvas = canvasView.canvas;
+    //     const selection = canvas.selection;
+    //     const selectionIterator = selection.values();
+    //     const node = selectionIterator.next().value;
+
+    //     if (!node || !node.filePath) {
+    //         return; // Exit if no node or node has no filePath
+    //     }
+
+    //     const file_path = node.filePath;
+    //     const file = this.app.vault.getAbstractFileByPath(file_path);
+    //     if (!file) {
+    //         return; // Exit if no file found
+    //     }
+
+    //     const front_matter = await this.get_frontmatter(file);
+
+    //     if (front_matter.caret_prompt && front_matter.caret_prompt === "mini-agent") {
+    //         buttonEl.addEventListener("click", async () => {
+    //             const canvasView = this.app.workspace.getMostRecentLeaf().view;
+
+    //             new AgentPromptModal(this.app, this, file_path, front_matter.caret_prompt, node.id).open();
+    //         });
+    //         menuEl.appendChild(buttonEl);
+    //     }
+    // }
+    async get_node_by_id(canvas: Canvas, node_id: string) {
+        const nodes_iterator = canvas.nodes.values();
+        for (const node of nodes_iterator) {
+            if (node.id === node_id) {
+                return node;
+            }
+        }
+        return null; // Return null if no node matches the ID
+    }
+    async execute_plan(nodes: PlanNode[], agent_node_id: string): Promise<void> {
+        const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
+        // @ts-ignore
+        if (!canvas_view?.canvas) {
+            return;
+        }
+        const canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
+
+        const canvas_data = canvas.getData();
+        console.log({ canvas_data });
+        const canvas_nodes = canvas_data.nodes;
+        console.log(agent_node_id);
+
+        let agent_node;
+
+        // Iterate over the canvas nodes to find the agent node
+        canvas_nodes.forEach((node: any) => {
+            if (node.id === agent_node_id) {
+                agent_node = node;
+            }
+        });
+        if (!agent_node) {
+            throw new Error("failed to id the agent node");
+        }
+
+        function topological_sort(nodes: PlanNode[]): PlanNode[] {
+            const sorted_nodes: PlanNode[] = [];
+            const visited: Set<number> = new Set();
+            const temp_mark: Set<number> = new Set();
+
+            function visit(node: PlanNode) {
+                if (temp_mark.has(node.id)) {
+                    throw new Error("Graph is not a DAG");
+                }
+                if (!visited.has(node.id)) {
+                    temp_mark.add(node.id);
+                    node.dependencies.forEach((dep_id) => {
+                        const dep_node = nodes.find((n) => n.id === dep_id);
+                        if (dep_node) {
+                            visit(dep_node);
+                        }
+                    });
+                    temp_mark.delete(node.id);
+                    visited.add(node.id);
+                    sorted_nodes.push(node);
+                }
+            }
+
+            nodes.forEach((node) => {
+                if (!visited.has(node.id)) {
+                    visit(node);
+                }
+            });
+
+            return sorted_nodes;
+        }
+
+        // Adapter function for known pairings
+        async function adapter(node1: PlanNode, node2: PlanNode): Promise<any> {
+            if (node1.type === "google_search" && node2.type === "get_websites_content") {
+                const search_results = await google_search(node1.input);
+                console.log(`Executing step: ${node2.type} with adapted input: ${search_results}`);
+
+                return search_results;
+            } else {
+                console.log(`Executing step: ${node1.type} with input: ${node1.input}`);
+                console.log(`Executing step: ${node2.type} with input: ${node2.input}`);
+            }
+        }
+
+        // Sort the nodes based on dependencies
+        const sorted_nodes = topological_sort(nodes);
+
+        // Initialize results dictionary
+        const results: { [key: string]: { raw_output: any; canvas_nodes: any } } = {};
+
+        // Execute the nodes in the sorted order with adapter check
+        for (let i = 0; i < sorted_nodes.length; i++) {
+            const current_node = sorted_nodes[i];
+            const next_node = sorted_nodes[i + 1];
+            let step_output;
+            console.log({ i });
+
+            if (next_node && current_node.type === "google_search" && next_node.type === "get_websites_content") {
+                step_output = await adapter(current_node, next_node);
+            } else {
+                if (current_node.type === "get_websites_content") {
+                    console.log("Executing in get websites contetn");
+                    const step_input: StepGetWebsiteContentInput = {
+                        list_of_websites_string: results[current_node.dependencies[0]].raw_output,
+                    };
+                    const step = new StepGetWebsiteContent();
+                    const run_step: StepGetWebsiteContentOutput = await step.process(step_input);
+                    step_output = run_step.text_nodes;
+                }
+            }
+            console.log({ step_output, i });
+            if (i === 0) {
+                console.log("Does this execute?");
+                console.log({ agent_node });
+                if (Array.isArray(step_output)) {
+                    step_output = step_output.map((item) => String(item)).join(", ");
+                }
+                const new_node = await this.childNode(
+                    canvas,
+                    agent_node,
+                    agent_node.x + 200,
+                    agent_node.y,
+                    step_output
+                );
+
+                // Store the results
+                results[current_node.id] = {
+                    raw_output: step_output,
+                    canvas_nodes: [new_node],
+                };
+            } else {
+                const previous_node_id = current_node.dependencies[0];
+                const previous_node = results[previous_node_id];
+                const output_nodes = [];
+                if (Array.isArray(step_output)) {
+                    console.log("Iterating over the nodes");
+                    console.log({ step_output });
+
+                    const total_nodes = step_output.length;
+                    const median_index = Math.floor(total_nodes / 2);
+                    const y_values = [];
+
+                    for (let i = 0; i < total_nodes; i++) {
+                        const y_offset = (i - median_index) * 200;
+                        y_values.push(previous_node.canvas_nodes[0].y + y_offset);
+                    }
+
+                    for (let i = 0; i < step_output.length; i++) {
+                        const content = step_output[i];
+                        const new_node = await this.childNode(
+                            canvas,
+                            previous_node.canvas_nodes[0],
+                            previous_node.canvas_nodes[0].x + 600,
+                            y_values[i],
+                            content
+                        );
+                        output_nodes.push(new_node);
+                    }
+                }
+
+                // Store the results
+                results[current_node.id] = {
+                    raw_output: step_output,
+                    canvas_nodes: output_nodes,
+                };
+            }
+        }
+    }
 
     childNode = async (
         canvas: Canvas,
@@ -3445,7 +4120,7 @@ version: 1
 
         canvas.requestSave();
 
-        return tempChildNode;
+        return node;
     };
 
     addNode = (
@@ -3674,9 +4349,16 @@ class CaretSettingTab extends PluginSettingTab {
             return;
         }
 
+        const default_llm_providers = DEFAULT_SETTINGS.llm_provider_options;
+        console.log({ default_llm_providers });
+        const current_llm_providers = this.plugin.settings.llm_provider_options;
+        const current_custom = current_llm_providers.custom;
+        console.log({ current_custom });
+        this.plugin.settings.llm_provider_options = { ...default_llm_providers, custom: { ...current_custom } };
+
         const custom_endpoints = this.plugin.settings.custom_endpoints;
         // @ts-ignore
-        let model_drop_down_settings: ModelDropDownSettings = this.plugin.settings.provider_dropdown_options;
+        let model_drop_down_settings: ModelDropDownSettings = DEFAULT_SETTINGS.provider_dropdown_options;
 
         if (Object.keys(custom_endpoints).length > 0) {
             for (const [key, value] of Object.entries(custom_endpoints)) {
@@ -3723,6 +4405,7 @@ class CaretSettingTab extends PluginSettingTab {
                 ]
             ).map(([key, value]) => [key, value.name])
         );
+        console.log(model_options_data);
         // LLM Provider Settings
         new Setting(containerEl)
             // .setName("LLM Provider")
@@ -3738,6 +4421,8 @@ class CaretSettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.llm_provider)
                     .onChange(async (provider) => {
                         this.plugin.settings.llm_provider = provider;
+                        console.log(provider);
+                        console.log(this.plugin.settings.llm_provider_options);
                         this.plugin.settings.model = Object.keys(
                             this.plugin.settings.llm_provider_options[provider]
                         )[0];
@@ -3828,19 +4513,32 @@ class CaretSettingTab extends PluginSettingTab {
                     });
                 text.inputEl.addClass("hidden-value-unsecure");
             });
-        // new Setting(containerEl)
-        //     .setName("Anthropic API Key")
-        //     .setDesc("")
-        //     .addText((text) => {
-        //         text.setPlaceholder("Anthropic API Key")
-        //             .setValue(this.plugin.settings.anthropic_api_key)
-        //             .onChange(async (value: string) => {
-        //                 this.plugin.settings.anthropic_api_key = value;
-        //                 await this.plugin.saveSettings();
-        //                 await this.plugin.loadSettings();
-        //             });
-        //         text.inputEl.addClass("hidden-value-unsecure");
-        //     });
+        new Setting(containerEl)
+            .setName("Anthropic API Key")
+            .setDesc("")
+            .addText((text) => {
+                text.setPlaceholder("Anthropic API Key")
+                    .setValue(this.plugin.settings.anthropic_api_key)
+                    .onChange(async (value: string) => {
+                        this.plugin.settings.anthropic_api_key = value;
+                        await this.plugin.saveSettings();
+                        await this.plugin.loadSettings();
+                    });
+                text.inputEl.addClass("hidden-value-unsecure");
+            });
+        new Setting(containerEl)
+            .setName("Open Router API Key")
+            .setDesc("")
+            .addText((text) => {
+                text.setPlaceholder("OpenRouter API Key")
+                    .setValue(this.plugin.settings.open_router_key)
+                    .onChange(async (value: string) => {
+                        this.plugin.settings.open_router_key = value;
+                        await this.plugin.saveSettings();
+                        await this.plugin.loadSettings();
+                    });
+                text.inputEl.addClass("hidden-value-unsecure");
+            });
         new Setting(containerEl)
             .setName("Reload after adding API Keys!")
             .setDesc(

@@ -26,7 +26,6 @@ export function generateHashForUUID(uuid: string): string {
 }
 export function validateUUIDHashPair(uuid: string, hash: string): boolean {
     const generatedHash = generateHashForUUID(uuid);
-    console.log("Checking the generated hash");
     return generatedHash === hash;
 }
 export async function validate_license_key(key: string) {
@@ -35,9 +34,7 @@ export async function validate_license_key(key: string) {
     // This is what can I do in 30 minutes to put up a speed bump.
     const url = `https://script.google.com/macros/s/AKfycbzIOC4eyZ6ttfhONhBvrZZxYMNAqCT6K4RM-qkyGaCSsQ9yF1RJIxCGysbfMVrazeVfdg/exec?key=${key}`;
     const output = await fetch(url);
-    console.log(output);
     const json = await output.json();
-    console.log(json);
     // Convert string values of 'status' and 'validKey' to actual boolean values
     json.status = json.status === "true";
     json.validKey = json.validKey === "true";
