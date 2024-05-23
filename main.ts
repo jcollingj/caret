@@ -436,7 +436,7 @@ interface CaretPluginSettings {
 }
 
 const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.24",
+    caret_version: "0.2.25",
     model: "gpt-4-turbo",
     llm_provider: "openai",
     openai_api_key: "",
@@ -2258,8 +2258,8 @@ version: 1
             },
         });
         this.addCommand({
-            id: "open-workflow-editor",
-            name: "Open Workflow Editor",
+            id: "edit-workflow",
+            name: "Edit Workflow",
             callback: async () => {
                 const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
                 if (editor) {
@@ -2483,62 +2483,7 @@ version: 1
 
                     next.call(this, event);
                 },
-            // rerenderViewport: (next: any) =>
-            //     function (...args: any) {
-            //         console.log("rerenderViewport called with arguments:", args);
-            //         const result = next.call(this, ...args);
-            //         console.log("rerenderViewport event:", result);
-            //         return result;
-            //     },
-            // renderSnapPoints: (next: any) =>
-            //     function (...args: any) {
-            //         console.log("renderSnapPoints called with arguments:", args);
-            //         const result = next.call(this, ...args);
-            //         console.log("renderSnapPoints event:", result);
-            //         return result;
-            //     },
-            // setViewport: (next: any) =>
-            //     function (...args: any) {
-            //         console.log("setViewport called with arguments:", args);
-            //         const result = next.call(this, ...args);
-            //         console.log("setViewport event:", result);
-            //         return result;
-            //     },
-            // getData: (next: any) =>
-            //     function (...args: any) {
-            //         console.log("getData called with arguments:", args);
-            //         const result = next.call(this, ...args);
-            //         console.log("getData result:", result);
-            //         return result;
-            //     },
-            // getState: (next: any) =>
-            //     function (...args: any) {
-            //         console.log("getState called with arguments:", args);
-            //         const result = next.call(this, ...args);
-            //         console.log("getState result:", result);
-            //         return result;
-            //     },
-            // getViewportNodes: (next: any) =>
-            //     function (...args: any) {
-            //         console.log("getViewportNodes called with arguments:", args);
-            //         const result = next.call(this, ...args);
-            //         console.log("getViewportNodes result:", result);
-            //         return result;
-            //     },
-            // load: (next: any) =>
-            //     function (...args: any) {
-            //         console.log("load called with arguments:", args);
-            //         const result = next.call(this, ...args);
-            //         console.log("load result:", result);
-            //         return result;
-            //     },
-            // markViewportChanged: (next: any) =>
-            //     function (...args: any) {
-            //         console.log("markViewportChanged called with arguments:", args);
-            //         const result = next.call(this, ...args);
-            //         console.log("markViewportChanged result:", result);
-            //         return result;
-            //     },
+
             requestFrame: (next: any) =>
                 function (...args: any) {
                     const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
@@ -2959,7 +2904,6 @@ version: 1
                 const node = selectionIterator.next().value;
                 const x = node.x + node.width + 200;
                 const new_node = await this.childNode(canvas, node, x, node.y, "");
-                console.log({ new_node });
                 new_node.unknownData.role = "user";
             });
             menuEl.appendChild(graphButtonEl);
@@ -3011,7 +2955,6 @@ version: 1
                     icon: "lucide-user",
                     tooltip: "Set role to user",
                     callback: () => {
-                        console.log(node);
                         node.unknownData.role = "user";
                         node.unknownData.displayOverride = false;
                         canvas.requestFrame();
@@ -3192,10 +3135,8 @@ version: 1
                             console.error("File not found:", file_path);
                         }
                     } else if (ancestor.type === "file" && ancestor.file && ancestor.file.includes(".pdf")) {
-                        console.log("PDF for context here");
                         const file_name = ancestor.file;
                         const text = await this.extractTextFromPDF(file_name);
-                        console.log(text.substring(0, 1000));
                         contextToAdd = `\n\n---------------------------\n\nPDF File Title: ${file_name}\n${text}`;
                     }
 
@@ -3216,7 +3157,6 @@ version: 1
         };
 
         await findAncestorsWithContext(nodeId);
-        console.log(ancestors_context);
         return ancestors_context;
     }
 
@@ -3295,9 +3235,7 @@ version: 1
             console.error("Node not found with ID:", node_id);
             return;
         }
-        console.log(node);
         node.unknownData.role = "user";
-        console.log("--- HEre??");
 
         // Add user xml if it's not there and re-fetch the node
         const current_text = node.text;
@@ -3332,6 +3270,7 @@ version: 1
 
                         for (let i = 0; i < prompts.length; i++) {
                             const prompt = prompts[i];
+
                             const prompt_content = prompt._.trim();
                             const prompt_delay = prompt.$?.delay || 0;
                             const prompt_model = prompt.$?.model || "default";
@@ -3360,6 +3299,7 @@ version: 1
                                 provider: prompt_provider,
                                 temperature: prompt_temperature,
                             };
+                            console.log(sparkle_config);
 
                             const sparkle_promise = (async () => {
                                 if (prompt_delay > 0) {
@@ -3372,8 +3312,10 @@ version: 1
 
                             sparkle_promises.push(sparkle_promise);
                         }
+                        console.log("Sending prrallel promises");
 
                         await Promise.all(sparkle_promises);
+                        console.log("All promises back");
                         return;
                     } else if (caret_prompt === "linear") {
                         const xml_content = text.match(/```xml([\s\S]*?)```/)[1].trim();
@@ -3392,7 +3334,7 @@ version: 1
                             const prompt_model = prompt.$?.model || "default";
                             const prompt_provider = prompt.$?.provider || "default";
                             const prompt_temperature = parseFloat(prompt.$?.temperature) || this.settings.temperature;
-                            const new_node_content = `<role>user</role>\n${prompt_content}`;
+                            const new_node_content = `${prompt_content}`;
                             const x = current_node.x + current_node.width + 200;
                             const y = current_node.y;
 
@@ -3466,19 +3408,20 @@ ${added_context}`;
             if (role === "user") {
                 let content = node.text;
                 // Only for the first node
-                const user_message_tokens = this.encoder.encode(content).length;
-                if (user_message_tokens + convo_total_tokens > this.settings.context_window) {
-                    new Notice("Exceeding context window while adding user message. Trimming content");
-                    break;
-                }
-                const message = {
-                    role,
-                    content,
-                };
-                if (message.content.length > 0) {
-                    console.log("Adding to conversaion");
-                    conversation.push(message);
-                    convo_total_tokens += user_message_tokens;
+                if (content && content.length > 0) {
+                    const user_message_tokens = this.encoder.encode(content).length;
+                    if (user_message_tokens + convo_total_tokens > this.settings.context_window) {
+                        new Notice("Exceeding context window while adding user message. Trimming content");
+                        break;
+                    }
+                    const message = {
+                        role,
+                        content,
+                    };
+                    if (message.content.length > 0) {
+                        conversation.push(message);
+                        convo_total_tokens += user_message_tokens;
+                    }
                 }
             } else if (role === "assistant") {
                 const content = node.text;
@@ -3488,7 +3431,6 @@ ${added_context}`;
                 };
                 conversation.push(message);
             } else if (role === "system") {
-                console.log("Adding system prompt!!");
                 local_system_prompt = node.text;
             } else {
                 console.info("Moving over content");
@@ -3497,11 +3439,7 @@ ${added_context}`;
         conversation.reverse();
         if (local_system_prompt.length > 0) {
             conversation.unshift({ role: "system", content: local_system_prompt });
-            console.log("System prompt is added");
-        } else {
-            console.log("No system prompt added");
         }
-        console.log(conversation);
 
         let model = this.settings.model;
         let provider = this.settings.llm_provider;
@@ -3534,16 +3472,20 @@ ${added_context}`;
         }
         new_canvas_node.unknownData.role = "assistant";
 
-        if (this.settings.llm_provider_options[this.settings.llm_provider][this.settings.model].streaming) {
+        if (this.settings.llm_provider_options[provider][model].streaming) {
+            console.log("Streaming is true");
             const stream = await this.llm_call_streaming(provider, model, conversation, temperature);
-            await this.update_node_content(new_node_id, stream);
+            await this.update_node_content(new_node_id, stream, provider);
+            console.log("Back from updating");
+            console.log(new_node);
             return new_node;
         } else {
             const content = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
             new_node.setText(content);
         }
     }
-    async update_node_content(node_id: string, stream: any) {
+    async update_node_content(node_id: string, stream: any, llm_provider: string) {
+        console.log("In Update node");
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
         // @ts-ignore
         if (!canvas_view?.canvas) {
@@ -3562,10 +3504,10 @@ ${added_context}`;
         node.width = 510;
 
         if (
-            this.settings.llm_provider === "openai" ||
-            this.settings.llm_provider === "groq" ||
-            this.settings.llm_provider === "custom" ||
-            this.settings.llm_provider === "openrouter"
+            llm_provider === "openai" ||
+            llm_provider === "groq" ||
+            llm_provider === "custom" ||
+            llm_provider === "openrouter"
         ) {
             for await (const part of stream) {
                 const delta_content = part.choices[0]?.delta.content || "";
@@ -3585,7 +3527,7 @@ ${added_context}`;
                 node.render();
             }
         }
-        if (this.settings.llm_provider === "ollama") {
+        if (llm_provider === "ollama") {
             for await (const part of stream) {
                 const current_text = node.text;
                 const new_content = `${current_text}${part.message.content}`;
