@@ -4,6 +4,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { materialDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Clipboard } from 'lucide-react';
 import { NotebookPen } from 'lucide-react';
+import remarkGfm from 'remark-gfm';
 
 
 
@@ -68,10 +69,32 @@ const CodeBlock: React.FC<{ language: string; value: string }> = ({ language, va
   );
 };
 
+// const ReactView: React.FC<{ markdown: string }> = ({ markdown }) => {
+//   return (
+//     <ReactMarkdown
+//       className="" // Add this line
+//       components={{
+//         code({ node, inline, className, children, ...props }) {
+//           const match = /language-(\w+)/.exec(className || '');
+//           return !inline && match ? (
+//             <CodeBlock language={match[1]} value={String(children).replace(/\n$/, '')} />
+//           ) : (
+//             <code className={className} {...props}>
+//               {children}
+//             </code>
+//           );
+//         },
+//       }}
+//     >
+//       {markdown}
+//     </ReactMarkdown>
+//   );
+// };
 const ReactView: React.FC<{ markdown: string }> = ({ markdown }) => {
   return (
     <ReactMarkdown
-      className="react-markdown" // Add this line
+      className="markdown-body" // Add a proper class for styling
+      remarkPlugins={[remarkGfm]}
       components={{
         code({ node, inline, className, children, ...props }) {
           const match = /language-(\w+)/.exec(className || '');
@@ -136,6 +159,13 @@ const ChatComponent = forwardRef<{
   const [textBoxValue, setTextBoxValue] = useState("");
   const [checkedMessages, setCheckedMessages] = useState<{ [key: number]: boolean }>({});
 
+  // Inside your component
+  const isGeneratingRef = useRef(isGenerating);
+
+  useEffect(() => {
+    isGeneratingRef.current = isGenerating;
+  }, [isGenerating]);
+
 
   useImperativeHandle(ref, () => ({
     addMessage: (message: Message) => {
@@ -149,12 +179,21 @@ const ChatComponent = forwardRef<{
       });
     },
     submitMessage: async (userMessage: string) => {
-      setIsGenerating(true);
+      // if (isGenerating) {
+      //   console.error("Message submission blocked: already generating.");
+      //   return;
+      // }
+      // if (isGeneratingRef.current) {
+      //   console.error("Message submission blocked: already generating. From ref");
+      //   return;
+      // }
+      // setIsGenerating(true);
       const user_message_tokens = plugin.encoder.encode(userMessage).length;
       if (user_message_tokens > plugin.settings.context_window) {
         // new Notice(
-        //   `Single message exceeds model context window. Can't submit. Please shorten message and try again`
+        
         // );
+        console.error(`Single message exceeds model context window. Can't submit. Please shorten message and try again`)
         setIsGenerating(false);
         return;
       }
@@ -165,6 +204,7 @@ const ChatComponent = forwardRef<{
         handleConversationUpdate(newConversation);
         return newConversation;
       });
+      
     },
     getConversation: () => conversation // Add this line
   }));
@@ -240,16 +280,15 @@ const ChatComponent = forwardRef<{
       }
     }
   };
-  
 
-  const handleSubmit = async () => {
-    if (!isGenerating && textBoxValue.length > 0) {
-      setIsGenerating(true);
-      await onSubmitMessage(textBoxValue);
-      setTextBoxValue("");
-      setIsGenerating(false);
-    }
-  };
+
+const handleSubmit = async () => {
+  if (!isGeneratingRef.current && textBoxValue.length > 0) {
+    await setIsGenerating(true);
+    await onSubmitMessage(textBoxValue);
+    setTextBoxValue("");
+  }
+};
 
   useEffect(() => {
     // Update conversation state when new messages are added

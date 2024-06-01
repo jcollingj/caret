@@ -340,9 +340,10 @@ export class CaretSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName("Save Settings")
-            .setDesc("Save the specified folder path for chat logs.")
+            .setDesc("Save the chat settings")
             .addButton((button) => {
                 button.setButtonText("Save").onClick(async () => {
+                    console.log("Saving settings");
                     // Validate the path when the save button is clicked
                     if (tempChatFolderPath.length <= 1) {
                         new Notice("The folder path must be longer than one character.");
@@ -354,10 +355,10 @@ export class CaretSettingTab extends PluginSettingTab {
                     }
                     if (tempChatFolderPath !== this.plugin.settings.chat_logs_folder) {
                         this.plugin.settings.chat_logs_folder = tempChatFolderPath;
-                        await this.plugin.saveSettings();
-                        await this.plugin.loadSettings();
-                        new Notice("Chat folder path saved!");
                     }
+                    await this.plugin.saveSettings();
+                    await this.plugin.loadSettings();
+                    new Notice("Chat settings saved!");
                 });
             });
     }

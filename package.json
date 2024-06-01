@@ -1,6 +1,6 @@
 {
     "name": "caret",
-    "version": "0.2.29",
+    "version": "0.2.30",
     "description": "This is caret",
     "main": "main.js",
     "scripts": {
@@ -47,6 +47,7 @@
         "react-dom": "^18.3.1",
         "react-markdown": "^8.0.6",
         "react-syntax-highlighter": "^15.5.0",
+        "remark-gfm": "^1.0.0",
         "request": "^2.88.2",
         "serpapi": "^2.1.0",
         "uuid": "^9.0.1",

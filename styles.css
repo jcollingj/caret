@@ -275,17 +275,43 @@
 .bulk-convert-label {
     margin-right: 3px;
 }
-.react-markdown {
+/* .react-markdown {
     line-height: 1.5;
     margin: 0;
     padding: 0;
-    white-space: pre-wrap; /* Maintains whitespace formatting and wraps text */
+    white-space: pre-wrap; 
   }
   
-  .react-markdown code, .react-markdown pre {
+.react-markdown code, .react-markdown pre {
     white-space: pre-wrap;
   }
-  .hidden {
+  .styled-markdown {
+    line-height: 1.5;
+    margin-bottom: 0.5em;
+  } */
+
+  .markdown-body ul {
+    list-style-type: disc;
+    /* padding-left: 20px; */
+
+  }
+  .markdown-body li {
+    margin-top: 0px;
+    margin-bottom: 0px;
+  }
+  .markdown-body p {
+    margin-top: 0px;
+    margin-bottom: 0px;
+  }
+  
+  .markdown-body code {
+    background-color: #f6f8fa;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    margin-top: 0px;
+    margin-bottom: 0px;
+  }
+.hidden {
     display: none;
   }
 

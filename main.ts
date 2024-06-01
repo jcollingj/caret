@@ -328,7 +328,7 @@ export class InsertNoteModal extends Modal {
 }
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.29",
+    caret_version: "0.2.30",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
