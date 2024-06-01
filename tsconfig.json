@@ -11,7 +11,8 @@
     "importHelpers": true,
     "isolatedModules": true,
     "allowSyntheticDefaultImports": true,
-	"strictNullChecks": true,
+    "jsx": "react-jsx",
+    "strictNullChecks": true,
     "lib": [
       "DOM",
       "ES5",
@@ -20,6 +21,8 @@
     ]
   },
   "include": [
-    "**/*.ts"
-  ]
+    "**/*.ts",
+    "**/*.tsx"
+  ],
 }
+

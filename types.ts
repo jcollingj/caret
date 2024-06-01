@@ -98,3 +98,22 @@ export interface SparkleConfig {
     provider: string;
     temperature: number;
 }
+
+export interface Models {
+    name: string;
+    context_window: number;
+    function_calling: boolean;
+    vision: boolean;
+    streaming: boolean;
+}
+export interface CustomModels extends Models {
+    endpoint: string;
+    api_key: string;
+    known_provider: string;
+}
+
+export interface LLMProviderOptions {
+    [key: string]: {
+        [model: string]: Models;
+    };
+}

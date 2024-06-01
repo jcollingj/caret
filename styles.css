@@ -14,7 +14,7 @@
     display: flex;
     flex-direction: column;
     overflow-y: auto;
-    margin-bottom: 10px;
+    /* margin-bottom: 10px; */
     height: 80%;
     /* min-height: 0; Ensure it doesn't unnecessarily expand */
     width: 100%;
@@ -22,7 +22,6 @@
 }
 
 .message {
-    margin: 5px 0;
     padding: 10px; /* Increased padding to prevent text cut-off */
     border-radius: 5px;
     max-width: calc(100% - 10px); /* Prevent overflow */
@@ -30,6 +29,7 @@
     white-space: pre-wrap; /* Preserve whitespace and formatting */
     user-select: text;
     color: black; /* Set text color to black */
+    width: 100%;
 }
 
 .message.user, .message.system {
@@ -73,18 +73,37 @@
 .mb-4 {
     margin-bottom: 16px; /* 1rem typically equals 16px */
 }
-.settings_container {
-    background-color: rgb(187, 187, 187); padding: 10px; margin-bottom: 10px;
+.theme-light .settings_container {
+    background-color: rgb(187, 187, 187); /* Light grey for light theme */
+    padding: 10px; 
+    margin-bottom: 10px;
     border-radius: 4px; /* Rounded corners */
-    user-select: auto;
+    user-select: text;
     z-index: 1000000;
-    user-select:text;
 }
-.settings_code_block {
-    background-color: #fbf4f4; /* Light grey background */
+
+.theme-dark .settings_container {
+    background-color: #404040; /* Darker grey for dark theme */
+    padding: 10px; 
+    margin-bottom: 10px;
+    border-radius: 4px; /* Rounded corners */
+    user-select: text;
+    z-index: 1000000;
+}
+
+.theme-light .settings_code_block {
+    background-color: #fbf4f4; /* Light grey background for light theme */
     border-radius: 4px; /* Rounded corners */
     padding: 4px;
-    user-select:text;
+    user-select: text;
+    z-index: 1000000;
+}
+
+.theme-dark .settings_code_block {
+    background-color: #606060; /* Darker grey for dark theme */
+    border-radius: 4px; /* Rounded corners */
+    padding: 4px;
+    user-select: text;
     z-index: 1000000;
 }
 .hidden-value-unsecure {
@@ -219,5 +238,58 @@
 
 .submenu-item:hover {
     /* background-color: #f0f0f0; */
+}
+
+.message-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%; /* Adjusts to the width of the content */
+}
+
+.chat-message-actions {
+    /* width: 40px; */
+    padding-top: 4px;
+    display: flex;
+    justify-content: left;
+    margin-top: 1px;
+}
+
+
+.theme-light .chat-message-actions {
+    color: black;
+}
+
+.theme-dark .chat-message-actions {
+    background-color: transparent;
+}
+.chat-message-convert-to-note {
+    margin-right: 8px;
+}
+.chat-message-checkbox {
+    top: 3px;
+}
+.input-container {
+    /* background-color: #f0f0f0; */
+    background-color: var(--background-primary);;
+}
+.bulk-convert-label {
+    margin-right: 3px;
+}
+.react-markdown {
+    line-height: 1.5;
+    margin: 0;
+    padding: 0;
+    white-space: pre-wrap; /* Maintains whitespace formatting and wraps text */
+  }
+  
+  .react-markdown code, .react-markdown pre {
+    white-space: pre-wrap;
+  }
+  .hidden {
+    display: none;
+  }
+
+.tab {
+    margin-right: 4px;
 }
 

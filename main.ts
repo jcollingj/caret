@@ -1,17 +1,8 @@
-import {
-    StepGetWebsiteContent,
-    StepGetWebsiteContentInput,
-    StepGetWebsiteContentOutput,
-} from "steps/step_get_website_content";
-import { google_search } from "steps/step_serpapi";
-import { StepPlan, StepPlanInput, StepPlanOutput } from "./steps/step_plan";
+import { CaretSettingTab, CaretPluginSettings } from "./settings";
+import React from "react";
+import ChatComponent from "./chat";
+import { createRoot } from "react-dom/client"; // Add this import
 
-interface PlanNode {
-    id: number;
-    type: string;
-    input: string;
-    dependencies: number[];
-}
 // @ts-ignore
 import pdfjs, { GlobalWorkerOptions } from "@bundled-es-modules/pdfjs-dist/build/pdf";
 import pdf_worker_code from "./workers/pdf.worker.js";
@@ -21,7 +12,6 @@ const pdf_worker_blob = new Blob([pdf_worker_code], { type: "application/javascr
 const pdf_worker_url = URL.createObjectURL(pdf_worker_blob);
 pdfjs.GlobalWorkerOptions.workerSrc = pdf_worker_url;
 
-import { generateHashForUUID, validateUUIDHashPair, validate_license_key } from "./license_hashing";
 import Fuse from "fuse.js";
 import { encodingForModel } from "js-tiktoken";
 // @ts-ignore
@@ -229,11 +219,12 @@ export const redBackgroundField = StateField.define<DecorationSet>({
 export class InsertNoteModal extends Modal {
     plugin: any;
     current_view: any;
+    onSubmit: (note: string) => void;
 
-    constructor(app: App, plugin: any, view: any) {
+    constructor(app: App, plugin: any, onSubmit: (note: string) => void) {
         super(app);
         this.plugin = plugin;
-        this.current_view = view;
+        this.onSubmit = onSubmit;
     }
 
     onOpen() {
@@ -293,11 +284,13 @@ export class InsertNoteModal extends Modal {
             filtered_files.forEach((file) => {
                 const fileElement = filesDisplay.createEl("div", { text: file.name, cls: "insert-file-file-name" });
                 fileElement.addEventListener("click", () => {
-                    if (this.current_view.getViewType() === "main-caret") {
-                        this.current_view.insert_text_into_user_message(`[[${file.name}]]`);
-                        this.current_view.focusAndPositionCursorInTextBox();
-                        this.close();
-                    }
+                    this.onSubmit(`[[${file.name}]]`);
+                    this.close();
+                    // if (this.current_view.getViewType() === "main-caret") {
+                    //     this.current_view.insert_text_into_user_message(`[[${file.name}]]`);
+                    //     this.current_view.focusAndPositionCursorInTextBox();
+                    //     this.close();
+                    // }
                 });
             });
 
@@ -333,110 +326,13 @@ export class InsertNoteModal extends Modal {
         contentEl.empty();
     }
 }
-class AgentPromptModal extends Modal {
-    plugin: any;
-    file_path: string;
-    agent_type: string;
-    node_id: string;
 
-    constructor(app: App, plugin: any, file_path: string, agent_type: string, node_id: string) {
-        super(app);
-        this.plugin = plugin;
-        this.file_path = file_path;
-        this.agent_type = agent_type;
-        this.node_id = node_id;
-    }
-
-    onOpen() {
-        const { contentEl } = this;
-        const file_name = this.file_path.split("/").pop();
-
-        // Display agent name
-        const agentNameDisplay = contentEl.createEl("div", {
-            text: `Agent Name: ${file_name}`,
-        });
-        agentNameDisplay.style.fontWeight = "bold";
-        agentNameDisplay.style.marginBottom = "10px";
-
-        // Text area for prompt
-        const textArea = contentEl.createEl("textarea", {
-            placeholder: "Type your prompt here...",
-        });
-        textArea.style.width = "100%";
-        textArea.style.minHeight = "100px";
-        textArea.style.resize = "none";
-
-        // Submit button
-        const submitButton = contentEl.createEl("button", {
-            text: "Submit",
-        });
-        submitButton.style.marginTop = "10px";
-        submitButton.addEventListener("click", async () => {
-            const prompt = textArea.value;
-            await this.submitPrompt(prompt);
-            this.close();
-        });
-    }
-
-    async submitPrompt(prompt: string) {
-        // Implement the logic to handle the prompt submission
-
-        const input: StepPlanInput = {
-            user_input: prompt,
-        };
-        const step: StepPlan = new StepPlan();
-        const output: StepPlanOutput = await step.process(input);
-        const plan = output.nodes;
-
-        this.plugin.execute_plan(plan, this.node_id);
-        // You can add more logic here to handle the prompt submission as needed
-    }
-
-    onClose() {
-        let { contentEl } = this;
-        contentEl.empty();
-    }
-}
-
-interface Models {
-    name: string;
-    context_window: number;
-    function_calling: boolean;
-    vision: boolean;
-    streaming: boolean;
-}
-interface CustomModels extends Models {
-    endpoint: string;
-    api_key: string;
-    known_provider: string;
-}
-
-interface LLMProviderOptions {
-    [key: string]: {
-        [model: string]: Models;
-    };
-}
-
-interface CaretPluginSettings {
-    caret_version: string;
-    model: string;
-    llm_provider: string;
-    openai_api_key: string;
-    groq_api_key: string;
-    open_router_key: string;
-    anthropic_api_key: string;
-    context_window: number;
-    license_key: string;
-    license_hash: string;
-    custom_endpoints: { [model: string]: CustomModels };
-    system_prompt: string;
-    temperature: number;
-    llm_provider_options: LLMProviderOptions;
-    provider_dropdown_options: { [key: string]: string };
-}
-
-const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.28",
+export const DEFAULT_SETTINGS: CaretPluginSettings = {
+    caret_version: "0.2.29",
+    chat_logs_folder: "caret/chats",
+    chat_logs_date_format_bool: false,
+    chat_logs_rename_bool: true,
+    chat_send_chat_shortcut: "enter",
     model: "gpt-4-turbo",
     llm_provider: "openai",
     openai_api_key: "",
@@ -715,7 +611,6 @@ class SidebarChat extends ItemView {
         // Cleanup logic if necessary
     }
 }
-
 export const VIEW_NAME_MAIN_CHAT = "main-caret";
 class FullPageChat extends ItemView {
     chat_id: string;
@@ -725,11 +620,21 @@ class FullPageChat extends ItemView {
     messagesContainer: HTMLElement; // Container for messages
     conversation: Message[]; // List to store conversation messages
     is_generating: boolean;
-    constructor(plugin: any, leaf: WorkspaceLeaf, chat_id?: string, conversation: Message[] = []) {
+    chatComponentRef: any;
+    file_name: string;
+
+    constructor(
+        plugin: any,
+        leaf: WorkspaceLeaf,
+        chat_id?: string,
+        conversation: Message[] = [],
+        file_name: string = ""
+    ) {
         super(leaf);
         this.plugin = plugin;
         this.chat_id = chat_id || this.generateRandomID(5);
         this.conversation = conversation; // Initialize conversation list with default or passed value
+        this.file_name = file_name;
     }
 
     getViewType() {
@@ -737,7 +642,10 @@ class FullPageChat extends ItemView {
     }
 
     getDisplayText() {
-        return `Provider ${this.plugin.settings.llm_provider} | Model ${this.plugin.settings.model} | Chat: ${this.chat_id}`;
+        if (this.file_name.length > 1) {
+            return `Chat: ${this.file_name}`;
+        }
+        return `Chat: ${this.chat_id}`;
     }
 
     async onOpen() {
@@ -753,157 +661,90 @@ class FullPageChat extends ItemView {
             cls: "messages-container",
         });
 
-        // Render initial conversation
-        this.renderConversation();
-        this.createChatInputArea(container);
+        // Render the React component using createRoot
+        // Render the React component using createRoot
+        const root = createRoot(this.messagesContainer);
+        const chatComponent = React.createElement(ChatComponent, {
+            plugin: this.plugin,
+            chat_id: this.chat_id,
+            initialConversation: this.conversation,
+            onSubmitMessage: this.submitMessage.bind(this),
+            onSave: this.handleSave.bind(this), // Add this line
+            onBulkConvert: this.bulkConvert.bind(this),
+            onNewChat: this.newChat.bind(this),
+            onInsertNote: this.handleInsertNote.bind(this),
+            ref: (ref) => {
+                this.chatComponentRef = ref;
+            }, // Set the ref here
+        });
+        root.render(chatComponent);
     }
-    createChatInputArea(container: HTMLElement) {
-        // Create a container for the text box
-        const inputContainer = container.createEl("div", {});
-
-        // Create the text box within the input container
-        this.textBox = inputContainer.createEl("textarea", {
-            cls: "full_width_text_container",
-        });
-        this.textBox.placeholder = "Type something...";
-        this.textBox.addEventListener("keydown", (event) => {
-            if (event.key === "@") {
-                event.preventDefault(); // Prevent the default action
-                this.textBox.value += "@"; // Add the '@' sign to the textBox value
-                new InsertNoteModal(this.app, this.plugin, this).open(); // Open the modal
-            }
-        });
-
-        // Create a separate container for buttons within the input container
-        const buttonContainer = inputContainer.createEl("div", {
-            cls: "button-container",
-        });
-
-        // Create the submit button within the button container
-        const submitButton = buttonContainer.createEl("button", {});
-        submitButton.textContent = "Submit";
-        const submitAction = () => {
-            if (!this.is_generating) {
-                if (this.textBox.value.length > 0) {
-                    this.submitMessage(this.textBox.value);
-                    this.textBox.value = ""; // Clear the text box after sending
-                }
-            } else {
-                new Notice("Response still in progress");
-            }
-        };
-
-        submitButton.addEventListener("click", submitAction);
-
-        this.textBox.addEventListener("keydown", (event) => {
-            if (event.shiftKey && event.key === "Enter") {
-                event.preventDefault(); // Prevent the default action of a newline
-                submitAction();
-            }
-        });
+    async submitMessage(userMessage: string) {
+        if (this.chatComponentRef) {
+            await this.chatComponentRef.submitMessage(userMessage);
+        }
+    }
+    handleInsertNote(callback: (note: string) => void) {
+        console.log("Handle insert note is being called??");
+        new InsertNoteModal(this.app, this.plugin, (note: string) => {
+            console.log("Selected note:", note);
+            callback(note); // Call the callback with the note value
+        }).open();
+    }
+    bulkConvert(checkedContents: string[]) {
+        if (checkedContents.length < 1) {
+            new Notice("No selected messages to convert to note");
+        }
+        new ConvertTextToNoteModal(this.app, this.plugin, checkedContents).open();
+    }
+    handleSave() {
+        // You can access the conversation state from the chatComponentRef if needed
+        if (this.chatComponentRef) {
+            const conversation = this.chatComponentRef.getConversation(); // Call the getConversation method
+            // Save the conversation or perform any other actions
+            this.conversation = conversation;
+            this.saveChat();
+        }
     }
 
     addMessage(text: string, sender: "user" | "assistant") {
+        const newMessage = { content: text, role: sender };
         // Add message to the conversation array
-        this.conversation.push({ content: text, role: sender });
-        // Re-render the conversation in the HTML
-        this.renderConversation();
+        // this.conversation.push(newMessage);
+        // Update the conversation in the React component
+        if (this.chatComponentRef) {
+            this.chatComponentRef.addMessage(newMessage);
+        }
     }
+
     async streamMessage(stream_response) {
         if (this.plugin.settings.llm_provider === "ollama") {
             for await (const part of stream_response) {
                 this.conversation[this.conversation.length - 1].content += part.message.content;
-                this.renderConversation();
+                if (this.chatComponentRef) {
+                    this.chatComponentRef.updateLastMessage(part.message.content);
+                }
             }
         }
         if (this.plugin.settings.llm_provider === "openai" || "groq" || "custom") {
             for await (const part of stream_response) {
                 const delta_content = part.choices[0]?.delta.content || "";
                 this.conversation[this.conversation.length - 1].content += delta_content;
-                this.renderConversation();
+                if (this.chatComponentRef) {
+                    this.chatComponentRef.updateLastMessage(delta_content);
+                }
             }
         }
     }
 
-    renderConversation() {
-        // Clear the current messages
-        this.messagesContainer.empty();
-
-        // Add each message in the conversation to the messages container
-        this.conversation.forEach((message) => {
-            const display_class = `message ${message.role}`;
-            const messageDiv = this.messagesContainer.createEl("div", {
-                cls: display_class,
-            });
-            messageDiv.textContent = message.content;
-        });
-        setTimeout(() => {
-            this.saveChat();
-        }, 200);
-    }
-
-    async submitMessage(userMessage: string) {
-        this.is_generating = true;
-        const user_message_tokens = this.plugin.encoder.encode(userMessage).length;
-        if (user_message_tokens > this.plugin.settings.context_window) {
-            new Notice(
-                `Single message exceeds model context window. Can't submit. Please shorten message and try again`
-            );
-            return;
-        }
-
-        this.addMessage(userMessage, "user");
-        let total_context_length = 0;
-        let valid_conversation = [];
-
-        for (let i = 0; i < this.conversation.length; i++) {
-            let message = this.conversation[i];
-            let modified_content = message.content;
-            if (modified_content.length === 0) {
-                continue;
-            }
-
-            const block_ref_content = await this.plugin.get_ref_blocks_content(modified_content);
-            if (block_ref_content.length > 0) {
-                modified_content += `Referenced content:\n${block_ref_content}`;
-            }
-
-            const encoded_message = this.plugin.encoder.encode(modified_content);
-            const message_length = encoded_message.length;
-            if (total_context_length + message_length > this.plugin.context_window) {
-                break;
-            }
-            total_context_length += message_length;
-            valid_conversation.push({ ...message, content: modified_content }); // Push modified content in a hidden way
-        }
-        if (
-            this.plugin.settings.llm_provider_options[this.plugin.settings.llm_provider][this.plugin.settings.model]
-                .streaming
-        ) {
-            const response = await this.plugin.llm_call_streaming(
-                this.plugin.settings.llm_provider,
-                this.plugin.settings.model,
-                valid_conversation
-            );
-            this.addMessage("", "assistant"); // Display the response
-            await this.streamMessage(response);
-            this.is_generating = false;
-        } else {
-            const content = await this.plugin.llm_call(
-                this.plugin.settings.llm_provider,
-                this.plugin.settings.model,
-                valid_conversation
-            );
-            this.addMessage(content, "assistant");
-            this.is_generating = false;
-        }
-    }
     focusAndPositionCursorInTextBox() {
         this.textBox.focus();
     }
+
     insert_text_into_user_message(text: string) {
         this.textBox.value += text.trim() + " ";
     }
+
     escapeXml(unsafe: string): string {
         return unsafe.replace(/[<>&'"]/g, (c) => {
             switch (c) {
@@ -922,14 +763,23 @@ class FullPageChat extends ItemView {
             }
         });
     }
-    async saveChat() {
-        const chat_folder_path = "caret/chats";
-        const chat_folder = this.app.vault.getAbstractFileByPath(chat_folder_path);
-        if (!chat_folder) {
-            await this.app.vault.createFolder(chat_folder_path);
+    async newChat() {
+        const currentLeaf = this.app.workspace.activeLeaf;
+        if (currentLeaf) {
+            // This would detach it if we wanted to it. But it causes bugs below.
+            // I actually like the UX this way.
+            // currentLeaf?.detach();
         }
-        const file_name = `${this.chat_id}.md`;
-        const file_path = chat_folder_path + "/" + file_name;
+
+        const new_leaf = await this.app.workspace.getLeaf(true);
+        new_leaf.setViewState({
+            type: VIEW_NAME_MAIN_CHAT,
+            active: true,
+        });
+    }
+
+    async saveChat() {
+        // Prep the contents itself to be saved
 
         let file_content = `\`\`\`xml
         <root>
@@ -953,17 +803,81 @@ class FullPageChat extends ItemView {
         }
         let conversation = `<conversation>\n${messages}</conversation></root>\`\`\``;
         file_content += conversation;
-        const file = await this.app.vault.getFileByPath(file_path);
 
-        try {
-            if (file) {
-                await this.app.vault.modify(file, file_content);
-            } else {
-                await this.app.vault.create(file_path, file_content);
-            }
-        } catch (error) {
-            console.error("Failed to save chat:", error);
+        // And then get the actual save file
+        const chat_folder_path = this.plugin.settings.chat_logs_folder;
+
+        const chat_folder = this.app.vault.getAbstractFileByPath(chat_folder_path);
+        if (!chat_folder) {
+            await this.app.vault.createFolder(chat_folder_path);
         }
+        let file_to_save_to = await this.plugin.getChatLog(chat_folder_path, this.chat_id);
+
+        let new_chat = true;
+        if (file_to_save_to && file_to_save_to.path) {
+            new_chat = false;
+        }
+
+        const date = new Date();
+        const year = date.getFullYear();
+        const month = ("0" + (date.getMonth() + 1)).slice(-2);
+        const day = ("0" + date.getDate()).slice(-2);
+        const date_path = `/${year}/${month}/${day}`;
+
+        if (this.plugin.settings.chat_logs_date_format_bool) {
+            const fullPath = chat_folder_path + date_path;
+            const pathSegments = fullPath.split("/");
+            let currentPath = "";
+            for (const segment of pathSegments) {
+                if (segment !== "") {
+                    currentPath += segment;
+                    const folderExists = this.app.vault.getAbstractFileByPath(currentPath);
+                    if (!folderExists) {
+                        await this.app.vault.createFolder(currentPath);
+                    }
+                    currentPath += "/";
+                }
+            }
+        }
+
+        if (new_chat) {
+            const file_name = `${this.chat_id}.md`;
+            let file_path = chat_folder_path + "/" + file_name;
+            if (this.plugin.settings.chat_logs_date_format_bool) {
+                file_path = chat_folder_path + date_path + "/" + file_name;
+            }
+            const new_file_created = await this.app.vault.create(file_path, file_content);
+            if (this.plugin.settings.chat_logs_rename_bool) {
+                await this.name_new_chat(new_file_created);
+            }
+        } else {
+            const file = await this.app.vault.getFileByPath(file_to_save_to.path);
+            if (!file) {
+                new Notice("Failed to save file");
+                throw new Error("Failed to save file");
+            }
+            await this.app.vault.modify(file, file_content);
+        }
+    }
+    async name_new_chat(new_file: any) {
+        let new_message = `
+Please create a title for this conversation. Keep it to 3-5 words at max. Be as descriptive with that as you can be.\n\n
+
+Respond in plain text with no formatting.
+`;
+        for (let i = 0; i < this.conversation.length; i++) {
+            const message = this.conversation[i];
+            new_message += `${message.role}:\n${message.content}`;
+        }
+        const conversation = [{ role: "user", content: new_message }];
+        const output = await this.plugin.llm_call(
+            this.plugin.settings.llm_provider,
+            this.plugin.settings.model,
+            conversation
+        );
+        const path = new_file.path;
+        const newPath = `${path.substring(0, path.lastIndexOf("/"))}/${output}.md`;
+        await this.app.vault.rename(new_file, newPath);
     }
 
     generateRandomID(length: number) {
@@ -979,6 +893,119 @@ class FullPageChat extends ItemView {
         // Cleanup logic if necessary
     }
 }
+
+class ConvertTextToNoteModal extends Modal {
+    plugin: any;
+    messages: string[];
+    formatting_prompt: string = "Format the below content into a nice markdown document.";
+    fileName: string = "";
+    apply_formatting: boolean = true;
+
+    constructor(app: App, plugin: any, messages: string[]) {
+        super(app);
+        this.plugin = plugin;
+        this.messages = messages;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+
+        contentEl.createEl("h2", { text: "Convert Text to Note" });
+        contentEl.createEl("div", { text: `Converting ${this.messages.length} messages`, cls: "callout" });
+
+        new Setting(contentEl)
+            .setName("File Name")
+            .setDesc("Enter the name for the note.")
+            .addText((text) => {
+                text.setValue(this.fileName).onChange((value) => {
+                    this.fileName = value;
+                });
+            });
+
+        new Setting(contentEl)
+            .setName("Auto Format")
+            .setDesc("Apply prompt formatting to the note.")
+            .addToggle((toggle) => {
+                toggle.setValue(this.apply_formatting).onChange((value) => {
+                    this.apply_formatting = value;
+                });
+            });
+        const textArea = contentEl.createEl("textarea", {
+            text: this.formatting_prompt,
+            cls: "content-l w-full h-20",
+            placeholder: "Enter the formatting song.",
+        });
+        textArea.onchange = (event) => {
+            this.formatting_prompt = (event.target as HTMLTextAreaElement).value;
+        };
+
+        new Setting(contentEl).addButton((button) => {
+            button.setButtonText("Submit").onClick(async () => {
+                if (!this.fileName || this.fileName.trim() === "") {
+                    new Notice("File name must be set before saving");
+                    console.error("Validation Error: File name must exist");
+                    return;
+                }
+
+                let final_content = this.messages.join("\n");
+                if (this.apply_formatting) {
+                    if (this.formatting_prompt.length < 1) {
+                        new Notice("Must have formatting prompt");
+                        return;
+                    }
+                    let final_prompt = `${this.formatting_prompt}\n\n${this.messages.join("\n")}`;
+                    const conversation = [{ role: "user", content: final_prompt }];
+                    const response = await this.plugin.llm_call(
+                        this.plugin.settings.llm_provider,
+                        this.plugin.settings.model,
+                        conversation
+                    );
+                    final_content = response;
+                }
+
+                const file_path = `${this.fileName}.md`;
+
+                // Check if the file path contains parentheses
+                if (file_path.includes("/")) {
+                    const pathParts = file_path.split("/");
+                    let currentPath = "";
+                    for (const part of pathParts.slice(0, -1)) {
+                        currentPath += part;
+                        const folder = await this.app.vault.getAbstractFileByPath(currentPath);
+                        if (!folder) {
+                            try {
+                                await this.app.vault.createFolder(currentPath);
+                            } catch (error) {
+                                console.error("Failed to create folder:", error);
+                            }
+                        }
+                        currentPath += "/";
+                    }
+                }
+                const file = await this.app.vault.getFileByPath(file_path);
+
+                try {
+                    if (file) {
+                        new Notice("File exists already, please choose another name");
+                    } else {
+                        await this.app.vault.create(file_path, final_content);
+                        new Notice("Chat saved to note");
+                        this.close();
+                    }
+                } catch (error) {
+                    console.error("Failed to save note:", error);
+                }
+            });
+        });
+    }
+
+    onClose() {
+        const { contentEl } = this;
+        contentEl.empty();
+    }
+}
+
 class CustomModelModal extends Modal {
     model_id: string = "";
     model_name: string = "";
@@ -2005,15 +2032,7 @@ version: 1
             id: "caret-log",
             name: "Log",
             callback: async () => {
-                const currentLeaf = this.app.workspace.activeLeaf;
-                const path = "caret/chats";
-                const folder = this.app.vault.getFolderByPath(path);
-
-                if (currentLeaf?.view.getViewType() === "canvas") {
-                    const canvasView = currentLeaf.view;
-                    const canvas = (canvasView as any).canvas;
-                    const viewportNodes = canvas.getViewportNodes();
-                }
+                // const currentLeaf = this.app.workspace.activeLeaf;
             },
         });
         this.addCommand({
@@ -2032,7 +2051,10 @@ version: 1
                     return;
                 }
 
-                new InsertNoteModal(this.app, this, view).open();
+                // new InsertNoteModal(this.app, this, view).open();
+                new InsertNoteModal(this.app, this, (note: string) => {
+                    console.log("Selected note:", note);
+                }).open();
             },
         });
 
@@ -2220,15 +2242,28 @@ version: 1
         //     },
         // });
         this.addCommand({
-            id: "open-chat",
+            id: "continue-chat",
             name: "Continue Chat",
             callback: async () => {
                 const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
                 if (editor) {
+                    const active_file = this.app.workspace.getActiveFile();
+                    const active_file_name = active_file.name;
                     let content = editor.getValue();
-                    content = content.replace("```xml", "").trim();
-                    content = content.replace("```", "").trim();
-                    const xml_object = await this.parseXml(content);
+
+                    const split = content.split("<root>");
+                    const first_half = split[1];
+                    const second_split = first_half.split("</root>");
+                    const text = `<root>${second_split[0].trim()}</root>`;
+
+                    let xml_object;
+
+                    if (text) {
+                        xml_object = await this.parseXml(text);
+                    } else {
+                        new Notice("No XML block found.");
+                        return;
+                    }
                     const convo_id = xml_object.root.metadata[0].id[0];
                     const messages_from_xml = xml_object.root.conversation[0].message;
                     const messages: Message[] = [];
@@ -2241,8 +2276,20 @@ version: 1
                     }
                     if (convo_id && messages) {
                         const leaf = this.app.workspace.getLeaf(true);
+                        const header_el = leaf.tabHeaderEl;
+                        if (header_el) {
+                            const title_el = header_el.querySelector(".workspace-tab-header-inner-title");
+                            if (title_el) {
+                                if (active_file_name) {
+                                    title_el.textContent = active_file_name;
+                                } else {
+                                    title_el.textContent = "Caret Chat";
+                                }
+                            }
+                        }
                         const chatView = new FullPageChat(this, leaf, convo_id, messages);
                         leaf.open(chatView);
+                        leaf.getDisplayText();
                         this.app.workspace.revealLeaf(leaf);
                     } else {
                         new Notice("No valid chat data found in the current document.");
@@ -2366,6 +2413,45 @@ version: 1
                 delete this.selected_node_colors[node_id]; // Remove from tracking object
             }
         });
+    }
+    async getChatLog(folderPath: string, chatId: string) {
+        const chatFolder = this.app.vault.getFolderByPath(folderPath);
+        if (!chatFolder) {
+            await this.app.vault.createFolder(folderPath);
+        }
+        let fileToSaveTo = null;
+
+        const folder = this.app.vault.getFolderByPath(folderPath);
+        let folders_to_check = [folder];
+        let num_folders_to_check = 1;
+        let num_folders_checked = 0;
+
+        while (num_folders_checked < num_folders_to_check) {
+            const folder = folders_to_check[num_folders_checked];
+            const children = folder?.children || [];
+            for (let i = 0; i < children.length; i++) {
+                const child = children[i];
+                if (child.hasOwnProperty("extension")) {
+                    let contents = await this.app.vault.cachedRead(child);
+                    if (!contents) {
+                        continue;
+                    }
+                    contents = contents.toLowerCase();
+
+                    const split_one = contents.split("<id>")[1];
+                    const id = split_one.split("</id>")[0];
+                    if (id.toLowerCase() === chatId.toLowerCase()) {
+                        fileToSaveTo = child;
+                    }
+                } else {
+                    folders_to_check.push(child);
+                    num_folders_to_check += 1;
+                }
+            }
+
+            num_folders_checked += 1;
+        }
+        return fileToSaveTo;
     }
     escapeXml(unsafe: string): string {
         return unsafe.replace(/[<>&'"]/g, (c) => {
@@ -3117,11 +3203,7 @@ version: 1
                     let contextToAdd = "";
 
                     if (ancestor.type === "text") {
-                        console.log("In type text");
-
-                        console.log(ancestor);
                         const role = ancestor.role;
-                        console.log(role);
                         if (role.length === 0) {
                             let ancestor_text = ancestor.text;
                             const block_ref_content = await this.get_ref_blocks_content(ancestor_text);
@@ -3403,7 +3485,6 @@ version: 1
 
         added_context += "\n" + ancestors_with_context;
         added_context = added_context.trim();
-        console.log({ added_context, ancestors_with_context });
 
         let convo_total_tokens = this.encoder.encode(added_context).length;
         const current_message_content = `
@@ -3535,6 +3616,7 @@ ${added_context}`;
 
                 node.setText(new_content);
                 node.render();
+                console.log(node);
             }
         }
         if (llm_provider === "ollama") {
@@ -3542,16 +3624,22 @@ ${added_context}`;
                 const current_text = node.text;
                 const new_content = `${current_text}${part.message.content}`;
                 const word_count = new_content.split(/\s+/).length;
-                const number_of_lines = Math.ceil(word_count / 10);
+                const number_of_lines = Math.ceil(word_count / 7);
                 if (word_count > 500) {
-                    node.width = 750;
-                    node.height = Math.max(200, number_of_lines * 25);
-                } else {
-                    node.height = Math.max(200, number_of_lines * 30);
-                }
+                    // node.width = 750;
+                    // node.height = Math.max(200, number_of_lines * 35);
 
+                    const width = 750;
+                    const height = Math.max(200, number_of_lines * 35);
+                    node.resize(width);
+                } else {
+                    node.height = Math.max(200, number_of_lines * 45);
+                }
+                // node.resizeDirty = true;
                 node.setText(new_content);
                 node.render();
+                console.log(node);
+                node.moveTo();
             }
         }
     }
@@ -4059,8 +4147,10 @@ ${added_context}`;
         let tempChildNode = this.addNode(canvas, this.random(16), {
             x: x,
             y: y,
-            width: parentNode.width,
-            height: parentNode.height,
+            // width: parentNode.width,
+            // height: parentNode.height,
+            width: 400,
+            height: 200,
             type: "text",
             content,
         });
@@ -4217,294 +4307,5 @@ ${added_context}`;
 
     async saveSettings() {
         await this.saveData(this.settings);
-    }
-}
-
-type ModelDropDownSettings = {
-    openai: string;
-    groq: string;
-    ollama: string;
-    anthropic?: string;
-    custom?: string; // Make 'custom' optional
-};
-
-class CaretSettingTab extends PluginSettingTab {
-    plugin: CaretPlugin;
-
-    constructor(app: App, plugin: CaretPlugin) {
-        super(app, plugin);
-        this.plugin = plugin;
-    }
-
-    async activate_license(license: string) {
-        new Notice("Activating license...");
-        this.plugin.settings.license_key = license;
-        const activation_output = await validate_license_key(license);
-        if (!activation_output.status) {
-            new Notice("Error in license activation. Please try again. ");
-            new Notice("If it continues please contact Jake for help.");
-        }
-        if (!activation_output.validKey) {
-            if (activation_output.message === "invalid_key") {
-                new Notice("Invalid License Key");
-            } else if (activation_output.message === "too_many_activations") {
-                new Notice("License has exceeded allowed activations");
-                new Notice("Please contact Jake for more activations");
-            } else {
-                new Notice("Key is invalid for an unknown reason");
-                new Notice("If it continues please contact Jake for help.");
-            }
-            return { status: false };
-        } else {
-            const hash = generateHashForUUID(license);
-            const valid_license = { status: true, hash: hash };
-            return valid_license;
-        }
-    }
-
-    display(): void {
-        const { containerEl } = this;
-        containerEl.empty();
-        if (
-            !this.plugin.settings.license_key ||
-            !this.plugin.settings.license_hash ||
-            !validateUUIDHashPair(this.plugin.settings.license_key, this.plugin.settings.license_hash)
-        ) {
-            new Setting(containerEl)
-                .setName("License Key")
-                .setDesc("Enter your license key here.")
-                .addText((text) => {
-                    text
-                        .setPlaceholder("Enter License Key")
-                        .setValue(this.plugin.settings.license_key)
-                        .onChange(async (value: string) => {
-                            this.plugin.settings.license_key = value;
-                        }).inputEl.style.width = "100%"; // Set the width to full length
-                })
-                .setDesc("Click to activate your license.")
-                .addButton((button) => {
-                    button
-                        .setButtonText("Activate")
-                        .setClass("activate-button")
-                        .onClick(async (evt: MouseEvent) => {
-                            const license = this.plugin.settings.license_key;
-                            const hash_resp = await this.activate_license(license);
-                            if (hash_resp.status) {
-                                this.plugin.settings.license_hash = hash_resp.hash;
-                                new Notice("License Activated!");
-                            }
-                            await this.plugin.saveSettings();
-                            await this.plugin.loadSettings();
-                            this.display();
-                        });
-                });
-
-            return;
-        }
-        if (this.plugin.settings.caret_version !== DEFAULT_SETTINGS.caret_version) {
-            this.plugin.settings.caret_version = DEFAULT_SETTINGS.caret_version;
-        }
-
-        const default_llm_providers = DEFAULT_SETTINGS.llm_provider_options;
-        const current_llm_providers = this.plugin.settings.llm_provider_options;
-        const current_custom = current_llm_providers.custom;
-        this.plugin.settings.llm_provider_options = { ...default_llm_providers, custom: { ...current_custom } };
-
-        const custom_endpoints = this.plugin.settings.custom_endpoints;
-        // @ts-ignore
-        let model_drop_down_settings: ModelDropDownSettings = DEFAULT_SETTINGS.provider_dropdown_options;
-
-        if (Object.keys(custom_endpoints).length > 0) {
-            for (const [key, value] of Object.entries(custom_endpoints)) {
-                if (value.known_provider) {
-                    if (!this.plugin.settings.llm_provider_options[value.known_provider]) {
-                        this.plugin.settings.llm_provider_options[value.known_provider] = {};
-                    }
-                    this.plugin.settings.llm_provider_options[value.known_provider][key] = value;
-                } else {
-                    this.plugin.settings.llm_provider_options.custom[key] = value;
-                }
-            }
-        }
-
-        let context_window = null;
-        try {
-            const llm_provider = this.plugin.settings.llm_provider;
-            const model = this.plugin.settings.model;
-            if (
-                this.plugin.settings.llm_provider_options[llm_provider] &&
-                this.plugin.settings.llm_provider_options[llm_provider][model]
-            ) {
-                const model_details = this.plugin.settings.llm_provider_options[llm_provider][model];
-                if (model_details && model_details.context_window) {
-                    const context_window_value = model_details.context_window;
-                    context_window = parseInt(context_window_value).toLocaleString();
-                }
-            }
-        } catch (error) {
-            console.error("Error retrieving model details:", error);
-            context_window = null;
-        }
-        if (!this.plugin.settings.llm_provider || this.plugin.settings.llm_provider.length === 0) {
-            this.plugin.settings.llm_provider = "openai";
-            this.plugin.settings.model = "gpt-4-turbo";
-            this.plugin.settings.context_window = 128000;
-            this.plugin.saveSettings();
-        }
-
-        const model_options_data = Object.fromEntries(
-            Object.entries(
-                this.plugin.settings.llm_provider_options[
-                    this.plugin.settings.llm_provider as keyof typeof this.plugin.settings.llm_provider_options
-                ]
-            ).map(([key, value]) => [key, value.name])
-        );
-        // LLM Provider Settings
-        new Setting(containerEl)
-            // .setName("LLM Provider")
-            .setDesc(`Caret Version: ${this.plugin.settings.caret_version}`);
-
-        // LLM Provider Settings
-        new Setting(containerEl)
-            .setName("LLM Provider")
-            .setDesc("")
-            .addDropdown((dropdown) => {
-                dropdown
-                    .addOptions(model_drop_down_settings)
-                    .setValue(this.plugin.settings.llm_provider)
-                    .onChange(async (provider) => {
-                        this.plugin.settings.llm_provider = provider;
-                        this.plugin.settings.model = Object.keys(
-                            this.plugin.settings.llm_provider_options[provider]
-                        )[0];
-                        this.plugin.settings.context_window =
-                            this.plugin.settings.llm_provider_options[provider][
-                                this.plugin.settings.model
-                            ].context_window;
-                        await this.plugin.saveSettings();
-                        await this.plugin.loadSettings();
-                        this.display();
-                    });
-            });
-        const setting = new Setting(containerEl).setName("Model").addDropdown((modelDropdown) => {
-            modelDropdown.addOptions(model_options_data);
-            modelDropdown.setValue(this.plugin.settings.model);
-            modelDropdown.onChange(async (value) => {
-                this.plugin.settings.model = value;
-                this.plugin.settings.context_window =
-                    this.plugin.settings.llm_provider_options[this.plugin.settings.llm_provider][value].context_window;
-                await this.plugin.saveSettings();
-                await this.plugin.loadSettings();
-                this.display();
-            });
-        });
-        if (this.plugin.settings.model === "gpt-4o") {
-            new Setting(containerEl)
-                .setName("GPT-4o")
-                .setDesc(
-                    "You are are using the new model! If you check errors it might be because your API key doesn't have access."
-                );
-        }
-
-        if (context_window) {
-            setting.setDesc(`FYI your selected model has a context window of ${context_window}`);
-        }
-        if (this.plugin.settings.llm_provider === "ollama") {
-            const ollama_info_container = containerEl.createEl("div", {
-                cls: "settings_container",
-            });
-            ollama_info_container.createEl("strong", { text: "You're using Ollama!" });
-            ollama_info_container.createEl("p", { text: "Remember to do the following:" });
-            ollama_info_container.createEl("p", { text: "Make sure you have downloaded the model you want to use:" });
-            const second_code_block_container = ollama_info_container.createEl("div", {
-                cls: "settings_code_block",
-            });
-
-            second_code_block_container.createEl("code", { text: `ollama run ${this.plugin.settings.model}` });
-            ollama_info_container.createEl("p", {
-                text: "After running the model, kill that command and close the ollama app.",
-            });
-            ollama_info_container.createEl("p", {
-                text: "Then run this command to start the Ollama server and make it accessible from Obsidian:",
-            });
-            const code_block_container = ollama_info_container.createEl("div", {
-                cls: "settings_code_block",
-            });
-            code_block_container.createEl("code", {
-                text: "OLLAMA_ORIGINS=app://obsidian.md* ollama serve",
-            });
-
-            ollama_info_container.createEl("br"); // Adds a line break for spacing
-        }
-
-        new Setting(containerEl)
-            .setName("OpenAI API Key")
-            .setDesc("")
-            .addText((text) => {
-                text.setPlaceholder("OpenAI API Key")
-                    .setValue(this.plugin.settings.openai_api_key)
-                    .onChange(async (value: string) => {
-                        this.plugin.settings.openai_api_key = value;
-                        await this.plugin.saveSettings();
-                        await this.plugin.loadSettings();
-                    });
-                text.inputEl.addClass("hidden-value-unsecure");
-            });
-
-        new Setting(containerEl)
-            .setName("Groq API Key")
-            .setDesc("")
-            .addText((text) => {
-                text.setPlaceholder("Grok API Key")
-                    .setValue(this.plugin.settings.groq_api_key)
-                    .onChange(async (value: string) => {
-                        this.plugin.settings.groq_api_key = value;
-                        await this.plugin.saveSettings();
-                        await this.plugin.loadSettings();
-                    });
-                text.inputEl.addClass("hidden-value-unsecure");
-            });
-        new Setting(containerEl)
-            .setName("Anthropic API Key")
-            .setDesc("")
-            .addText((text) => {
-                text.setPlaceholder("Anthropic API Key")
-                    .setValue(this.plugin.settings.anthropic_api_key)
-                    .onChange(async (value: string) => {
-                        this.plugin.settings.anthropic_api_key = value;
-                        await this.plugin.saveSettings();
-                        await this.plugin.loadSettings();
-                    });
-                text.inputEl.addClass("hidden-value-unsecure");
-            });
-        new Setting(containerEl)
-            .setName("Open Router API Key")
-            .setDesc("")
-            .addText((text) => {
-                text.setPlaceholder("OpenRouter API Key")
-                    .setValue(this.plugin.settings.open_router_key)
-                    .onChange(async (value: string) => {
-                        this.plugin.settings.open_router_key = value;
-                        await this.plugin.saveSettings();
-                        await this.plugin.loadSettings();
-                    });
-                text.inputEl.addClass("hidden-value-unsecure");
-            });
-        new Setting(containerEl)
-            .setName("Reload after adding API Keys!")
-            .setDesc(
-                "After you added API keys for the first time you will need to reload the plugin for those changes to take effect. \n This only needs to be done the first time or when you change your keys."
-            );
-
-        new Setting(containerEl).setName("Save Settings").addButton((button) => {
-            button
-                .setButtonText("Save")
-                .setClass("save-button")
-                .onClick(async (evt: MouseEvent) => {
-                    await this.plugin.saveSettings();
-                    await this.plugin.loadSettings();
-                    new Notice("Settings Saved!");
-                });
-        });
     }
 }

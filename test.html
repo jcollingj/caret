@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>React Component Test</title>
+        <script src="https://unpkg.com/react/umd/react.development.js" crossorigin></script>
+        <script src="https://unpkg.com/react-dom/umd/react-dom.development.js" crossorigin></script>
+        <script src="https://unpkg.com/babel-standalone/babel.min.js"></script>
+        <script src="https://unpkg.com/react-markdown/umd/react-markdown.js"></script>
+    </head>
+    <body>
+        <div id="root">
+            <p>Hi</p>
+        </div>
+        <script type="text/babel">
+            const { React, ReactDOM, ReactMarkdown } = window;
+            const { createRoot } = ReactDOM;
+
+            // Define ReactView component
+            const ReactView = ({ markdown }) => {
+                return <ReactMarkdown>{markdown}</ReactMarkdown>;
+            };
+
+            // Define App component
+            const App = () => {
+                const markdownContent = "# Hello, World!\n\nThis is a markdown example.";
+                return (
+                    <div>
+                        <ReactView markdown={markdownContent} />
+                    </div>
+                );
+            };
+
+            // Render the App component
+            const root = createRoot(document.getElementById("root"));
+            root.render(<App />);
+        </script>
+    </body>
+</html>
