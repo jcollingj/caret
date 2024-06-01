@@ -4,3 +4,4 @@ dist/
 *.log
 data.json
 generate_uuids.ts
+*.code-workspace

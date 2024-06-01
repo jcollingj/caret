@@ -1,4 +1,3 @@
-import { generateHashForUUID, validateUUIDHashPair, validate_license_key } from "./license_hashing";
 import {
     App,
     Editor,
@@ -38,8 +37,6 @@ export interface CaretPluginSettings {
     open_router_key: string;
     anthropic_api_key: string;
     context_window: number;
-    license_key: string;
-    license_hash: string;
     custom_endpoints: { [model: string]: CustomModels };
     system_prompt: string;
     temperature: number;
@@ -53,32 +50,6 @@ export class CaretSettingTab extends PluginSettingTab {
     constructor(app: App, plugin: CaretPlugin) {
         super(app, plugin);
         this.plugin = plugin;
-    }
-
-    async activate_license(license: string) {
-        new Notice("Activating license...");
-        this.plugin.settings.license_key = license;
-        const activation_output = await validate_license_key(license);
-        if (!activation_output.status) {
-            new Notice("Error in license activation. Please try again. ");
-            new Notice("If it continues please contact Jake for help.");
-        }
-        if (!activation_output.validKey) {
-            if (activation_output.message === "invalid_key") {
-                new Notice("Invalid License Key");
-            } else if (activation_output.message === "too_many_activations") {
-                new Notice("License has exceeded allowed activations");
-                new Notice("Please contact Jake for more activations");
-            } else {
-                new Notice("Key is invalid for an unknown reason");
-                new Notice("If it continues please contact Jake for help.");
-            }
-            return { status: false };
-        } else {
-            const hash = generateHashForUUID(license);
-            const valid_license = { status: true, hash: hash };
-            return valid_license;
-        }
     }
 
     api_settings_tab(containerEl: HTMLElement): void {
@@ -366,43 +337,6 @@ export class CaretSettingTab extends PluginSettingTab {
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
-        if (
-            !this.plugin.settings.license_key ||
-            !this.plugin.settings.license_hash ||
-            !validateUUIDHashPair(this.plugin.settings.license_key, this.plugin.settings.license_hash)
-        ) {
-            new Setting(containerEl)
-                .setName("License Key")
-                .setDesc("Enter your license key here.")
-                .addText((text) => {
-                    text
-                        .setPlaceholder("Enter License Key")
-                        .setValue(this.plugin.settings.license_key)
-                        .onChange(async (value: string) => {
-                            this.plugin.settings.license_key = value;
-                        }).inputEl.style.width = "100%"; // Set the width to full length
-                })
-                .setDesc("Click to activate your license.")
-                .addButton((button) => {
-                    button
-                        .setButtonText("Activate")
-                        .setClass("activate-button")
-                        .onClick(async (evt: MouseEvent) => {
-                            const license = this.plugin.settings.license_key;
-                            const hash_resp = await this.activate_license(license);
-                            if (hash_resp.status) {
-                                // @ts-ignore
-                                this.plugin.settings.license_hash = hash_resp.hash;
-                                new Notice("License Activated!");
-                            }
-                            await this.plugin.saveSettings();
-                            await this.plugin.loadSettings();
-                            this.display();
-                        });
-                });
-
-            return;
-        }
         if (this.plugin.settings.caret_version !== DEFAULT_SETTINGS.caret_version) {
             this.plugin.settings.caret_version = DEFAULT_SETTINGS.caret_version;
         }

@@ -83,7 +83,7 @@ export interface CanvasMenu {
 
 export type Message = {
     content: string;
-    role: string;
+    role: "user" | "assistant";
 };
 
 export type Edge = {
@@ -116,4 +116,13 @@ export interface LLMProviderOptions {
     [key: string]: {
         [model: string]: Models;
     };
+}
+
+export interface NewNode {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    type: "text" | "file";
+    content: string;
 }
