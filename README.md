@@ -1,87 +1,86 @@
-## Caret
-
-Caret enables you to work better in Obsidian.
-
-Caret is a local-first, privacy preserving application. The only external network calls are to activate your license and use remote LLMs (although not required). I don't have any backend or servers for Caret, don't collect any telemetry, etc. 
-## Known Issues
-
-- **Sparkle Icon**: May render context incompletely if used immediately after editing a note on Canvas. *Workaround*: Allow a brief pause (Like 1 second) before using the sparkle icon.
-- **Color Coding**: Highlighted canvas branches might retain the green color indefinitely if you don't click on the canvas before changing pages or exiting Obsidian.
-	- Might add a toggle to disable this if I can't fix it quickly
-	- I would avoid using this in heavily color coded graphs for now
-
-## Installation Instructions
-
-### Step 1: Install the BRAT Plugin from TfTHacker
-1. BRAT is the **Beta Reviewers Auto-update Tool**
-	1. https://tfthacker.com/BRAT
-2. You can install this through the Community Plugins within Obsidian.
-
-### Step 2: Install Caret
-   - Open up the BRAT Plugin
-   - Add the GitHub Personal Access Token from your confirmation email
-	   - This enables read access to private Caret repo, which allows you to download the plugin
-   - Click Add Beta Plugin
-   - For repo enter: `jcollingj/caret`
-   - You can choose whether you want to auto update the plugins or not! It might be useful while I'm rapidly iterating on this
-
-### Step 3: Activate License:
-- Go to Caret settings
-- Enter the license you received in your email
-- Click activate!
-- Let me know if you have any issues at all with this please!
-
-### Step 3: Configure Caret Settings
-- Within your settings page open up the Caret settings
-- Pick the model you want to use
-- When you add API Keys you need to then reload the app for those changes to take effect. That's only for API keys. You can change the providers/models at any time without reloading.
-- Note that there are a couple additional steps if you want to use ollama running locally
+# Caret
+Caret is an Obsidian plugin that brings the power LLMs into your Obsidian Vault. Caret follows all the main Obsidian philosophies. It's local-first, privacy preserving and stores all data as local files.
 
 
-## Features
-### Standard LLM Chat
-- Like ChatGPT, but local first and the output is stored directly in your vault as markdown files. Meaning every conversation is instantly searchable and can be used as input to other Caret features.
-- Open this from the chat icon added to the side bar.
-- This does create a new folder `caret/chats` and stores all chats in this
-- You can type `@` to bring up the at-command menu. This allows you to insert documents and use them as context
-### Chat in Canvas
-- Explore non-linear chats in the Obsidian canvas. Easily remix conversations by moving, linking, and unlinking nodes
-- Use the node icon within the menu to add new nodes that are pre-formatted for user messages.
-- Click the Sparkle icon for initiating new conversations.
-- Incorporate block refs by just using them! Caret will grab the context automatically
-- ##### Chat Format
-	- Within the canvas the nodes need to have a specific format for the chat to know which is which. Add a role xml tag with user in the middle to the beginning of text notes to make it be from the user.
-		- The format is `<role>user</role>`
-		- The easiest way to do this is to just click the "Add Child" button the menu
-- ##### Custom Keybinds (Canvas)
-	- **Graph Navigation**: Use `Mod + Arrow key` to navigate through nodes. (Note: Current limitations with multiple branches).
-	- **Node Creation**: `Shift+Mod+Arrow Key` to create a new node in the specified direction.
-	- **Activate Sparkle**: `Command + Shift + Enter`
-- **Parallel Prompts**
-	- You can save collections of prompts as special notes. You can then add these to the canvas, connect a node and sparkle! It will run all of the prompts stored in that note against your input node.
-	- The structure of parallel prompt note is as follows:
-		- **Note Properties** - Add two properties to the note.
-			- `caret_prompt` set to `parallel_prompts`
-				- This is text
-			- `prompts` this is a list of the prompts you will add in the notes
-		- **Note Content** - Add xml code blocks that contain an xml tag with the same name as what you listed in the `prompts` property. One code block per prompt.
-		- So if I had a property called `best_season` my code block would look like:
-			- ```xml 
-				  <best_season> Whats the best time visit the following location? </best_season>``` 
-			- I need to document this better! 
-			- I'm also planning to add a view that will make creating these easier. Feel free to DM if you want to get started with this before I document it better/
-### Inline Editing
-- Inline editing can be used in markdown files. Either use the command pallette or CMD+J when you have text selected. That text will be used as the context. Add the prompt and then choose append or edit.
-- The LLM will generate a response. This is added into your existing file. It will be formatted as a janky diff for now. So you can see what the changes would be before you apply them
-- Then use the command "Apply Diffs" to apply those changes if you want them
-- There is a lot of work to be done with this. For now it's just basic usage.
-
-## What does my purchase entail?
-- Your purchase of Caret is for life-time access and includes all future updates!
-- I plan to maintain Caret as long as it's fun and profitable. I built Caret for myself first and continue to use it every day. Updates to Caret will be driven by my own usage and by the needs of early adopters (thank you for the support 🙏).
-- I'm committed to maintaining Caret for the foreseeable future, but not forever. If at some point I decide to stop maintaining Caret I'm committed to open sourcing it. 
-- So to summarize: For $50 (or less), you get life-time access to Caret. If at any point I ever stop updating you and the community will have full access to the code itself. At that point anyone would be welcome to continue adding new features to it. 
+# Features:
+- AI Canvas: Use LLMs in the Obsidian Canvas for non-linear chat and more.
+- Chat: Chat directly in Obsidian. Reference other files in your vault. All chat logs are stored as vault files.
+- Use Any LLMs: Use Caret with local or remote LLMs. Caret has built in support for Ollama, OpenAI, Anthropic, Groq, OpenRouter and you can add any additional models yourself.
 
 
-## Refund Policy
-- If you're refund request is reasonable I'm down to refund.
+## Discord
+Come hang in the Discord! Everyone's welcome! Targeted for people using Obsidian, LLMs and AI tools.
+
+https://discord.com/invite/zazuUJdU
+
+The discord is for people to:
+- Hang
+- Ask questions 
+- Talk shop
+- Show what they're working on
+- Discuss development of Caret
+
+Good vibes only. Strongly enforced.
+
+
+## Docs 
+The full docs for the plugin will be on the site:
+https://www.caretplugin.ai/
+
+## Design Principles
+These are the principles that guide the design and development of Caret. If a potential feature doesn't follow these then it probably won't be included in Caret.
+- Keep to local-first
+- No external services outside of LLM providers. No external APIs, DBs, RAG providers etc. All Caret functionality should come from just Caret.
+- All Caret data is should be stored as markdown files within the users vault. Anything that Caret creates or consumes should be savable as a local file.
+  
+
+
+## Contributing
+PRs welcome! More guidelines to come on this. But essentially if it's good, readable code that fits the Caret design principles then I'll try my best to incorporate it.
+
+Big emphasis on "follows Caret's design principles". Please don't start working on something that violates a design principle without running it past me first. I don't want you to possibly waste time if it's a feature that I won't be able to incorporate.
+
+## Caret Bounties
+Caret had about $2,000 in sales before I decided to opensource it. I'm not keeping any of that money, and instead it will be distributed as bounties for people contributing to Caret. The list of bounties and the contributors who completed them will be listed here.
+
+To participate in bounties DM me about which bounty you want to complete. I'll send payouts via Venmo, Zelle, or some other method TBD. You should complete a bounty within about a week of taking it on. I will try to have it so only one person is working on a given bounty at a time.
+
+Total Funds: $2,000
+Funds Remaining: $2,000
+Bounties Completed: 0
+Funds Disbursed to communtiy members: $0
+Bounties In Progress: 0
+Bounties Open:
+
+Open Bounties:
+- **Sidebar Chat**: 
+  - Extend chat so it can work in the sidebar as well. Include features to quickly add selected text into the chat.
+  - Payout: $100
+- **Canvas Cards Additional Actions**:
+  - Create additional actions that go in the "magic wand" menu. These actions should be things like: Split node into multiple nodes, 
+  - Payout: $100
+- **Canvas UI Improvements Batch**:
+  - Description: Expose more information to the user about what the canvas is currently doing.
+  - Features:
+    - Add a Heads Up Display / Mini map in the corner. Next to this HUD show the total number of tokens in the currently selected conversation
+    - Improve how we indicate which nodes will be used as context.Show the main conversation thread as one color + the nodes used as context as a different color
+  - Payout: $200
+- **Canvas Groups**:
+  - Description: Add support for referencing groups of nodes as context or conversational nodes.
+  - Features:
+    - You should be able to group a bunch of nodes, link that to a conversation and have all of that injected as context
+  - Payout: $100
+- **Image Support - Creating/Consuming**
+  - Description: Add support for creating images on the canvas and for using images as
+  - Features:
+    - Command to create the image, save it to a Caret folder and then add it to the canvas
+    - Ability to select images and use them as input on the canvas
+    - Payout: $100
+
+## Supporting Caret
+Caret is not looking for financial support. The best way you can support Caret is by:
+- Making a video of you using Caret, posting it on X and tagging me in it
+- Contributing code
+
+
+But if you do want to support financially, would you pay for a bounty? That could be a fun idea. DM if you would contribute $50-200 to have a feature created.

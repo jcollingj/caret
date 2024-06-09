@@ -24,26 +24,6 @@ type ModelDropDownSettings = {
 import { Models, CustomModels, LLMProviderOptions } from "./types";
 import CaretPlugin, { DEFAULT_SETTINGS } from "./main";
 
-export interface CaretPluginSettings {
-    caret_version: string;
-    chat_logs_folder: string;
-    chat_logs_date_format_bool: boolean;
-    chat_logs_rename_bool: boolean;
-    chat_send_chat_shortcut: string;
-    model: string;
-    llm_provider: string;
-    openai_api_key: string;
-    groq_api_key: string;
-    open_router_key: string;
-    anthropic_api_key: string;
-    context_window: number;
-    custom_endpoints: { [model: string]: CustomModels };
-    system_prompt: string;
-    temperature: number;
-    llm_provider_options: LLMProviderOptions;
-    provider_dropdown_options: { [key: string]: string };
-}
-
 export class CaretSettingTab extends PluginSettingTab {
     plugin: CaretPlugin;
 
@@ -253,7 +233,6 @@ export class CaretSettingTab extends PluginSettingTab {
         });
     }
     chat_settings_tab(containerEl: HTMLElement): void {
-        containerEl.createEl("p", { text: "Chat Settings" });
         let tempChatFolderPath = this.plugin.settings.chat_logs_folder; // Temporary storage for input value
 
         new Setting(containerEl)
@@ -304,8 +283,6 @@ export class CaretSettingTab extends PluginSettingTab {
 
                     await this.plugin.saveSettings();
                     await this.plugin.loadSettings();
-                    // this.display();
-                    console.log(this.plugin.settings.chat_send_chat_shortcut);
                 });
             });
 
@@ -314,7 +291,6 @@ export class CaretSettingTab extends PluginSettingTab {
             .setDesc("Save the chat settings")
             .addButton((button) => {
                 button.setButtonText("Save").onClick(async () => {
-                    console.log("Saving settings");
                     // Validate the path when the save button is clicked
                     if (tempChatFolderPath.length <= 1) {
                         new Notice("The folder path must be longer than one character.");
@@ -372,6 +348,5 @@ export class CaretSettingTab extends PluginSettingTab {
         apiTab.click();
 
         // this.api_settings_tab(containerEl);
-        console.log("Done rendeirng in new way");
     }
 }

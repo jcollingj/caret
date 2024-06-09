@@ -1,11 +1,14 @@
-import { CaretSettingTab, CaretPluginSettings } from "./settings";
-import React from "react";
-import ChatComponent from "./chat";
-import { createRoot } from "react-dom/client"; // Add this import
-
+// @ts-ignore
+import ollama from "ollama/browser";
+import { encodingForModel } from "js-tiktoken";
 // @ts-ignore
 import pdfjs from "@bundled-es-modules/pdfjs-dist/build/pdf";
 import pdf_worker_code from "./workers/pdf.worker.js";
+
+import OpenAI from "openai";
+import Groq from "groq-sdk";
+import Anthropic from "@anthropic-ai/sdk";
+import { around } from "monkey-around";
 
 // Create a Blob URL from the worker code
 // @ts-ignore
@@ -13,37 +16,22 @@ const pdf_worker_blob = new Blob([pdf_worker_code], { type: "application/javascr
 const pdf_worker_url = URL.createObjectURL(pdf_worker_blob);
 pdfjs.GlobalWorkerOptions.workerSrc = pdf_worker_url;
 
-import { encodingForModel } from "js-tiktoken";
-// @ts-ignore
-import ollama from "ollama/browser";
-
-import OpenAI from "openai";
-import Groq from "groq-sdk";
-import Anthropic from "@anthropic-ai/sdk";
-import { around } from "monkey-around";
 import { Canvas, ViewportNode, Message, Node, Edge, SparkleConfig } from "./types";
-import {
-    App,
-    Editor,
-    MarkdownView,
-    Modal,
-    Notice,
-    Plugin,
-    PluginSettingTab,
-    Setting,
-    ItemView,
-    WorkspaceLeaf,
-    setTooltip,
-    setIcon,
-    requestUrl,
-    TFile,
-} from "obsidian";
+import { MarkdownView, Modal, Notice, Plugin, setTooltip, setIcon, requestUrl } from "obsidian";
 import { CanvasFileData, CanvasNodeData, CanvasTextData } from "obsidian/canvas";
-import { NewNode, CustomModels } from "./types";
-var parseString = require("xml2js").parseString;
 
-import { InsertNoteModal, CMDJModal } from "./modals";
-import {} from "./editorExtensions";
+// Import all of the views, components, models, etc
+import { CaretSettingTab } from "./settings";
+import { CMDJModal } from "./modals/inlineEditingModal";
+import { InsertNoteModal } from "./modals/insertNoteModal";
+import { RemoveCustomModelModal } from "./modals/removeCustomModel";
+import { SystemPromptModal } from "./modals/systemPromptModal";
+import { redBackgroundField } from "./editorExtensions/inlineDiffs";
+import { NewNode, CaretPluginSettings } from "./types";
+import { CustomModelModal } from "./modals/addCustomModel";
+import { LinearWorkflowEditor } from "./views/workflowEditor";
+import { FullPageChat, VIEW_CHAT } from "./views/chat";
+var parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
     caret_version: "0.2.30",
@@ -216,1209 +204,6 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
         custom: "Custom",
     },
 };
-export const VIEW_NAME_SIDEBAR_CHAT = "sidebar-caret";
-class SidebarChat extends ItemView {
-    constructor(leaf: WorkspaceLeaf) {
-        super(leaf);
-    }
-    textBox: HTMLTextAreaElement;
-    messagesContainer: HTMLElement; // Container for messages
-
-    getViewType() {
-        return VIEW_NAME_SIDEBAR_CHAT;
-    }
-
-    getDisplayText() {
-        return VIEW_NAME_SIDEBAR_CHAT;
-    }
-
-    async onOpen() {
-        const metacontainer = this.containerEl.children[1];
-        metacontainer.empty();
-        const container = metacontainer.createEl("div", {
-            cls: "container",
-        });
-        metacontainer.prepend(container);
-        // this.containerEl.appendChild(container);
-
-        // Create a container for messages
-        this.messagesContainer = container.createEl("div", {
-            cls: "messages-container",
-        });
-
-        // Add a "Hello World" message
-        this.addMessage("MLX Testing", "system");
-        this.createChatInputArea(container);
-    }
-    createChatInputArea(container: HTMLElement) {
-        // Create a container for the text box and the submit button
-        const inputContainer = container.createEl("div", {
-            cls: "chat-input-container",
-        });
-
-        // Create the text box within the input container
-        this.textBox = inputContainer.createEl("textarea", {
-            cls: "full_width_text_container",
-        });
-        this.textBox.placeholder = "Type something...";
-
-        // Create the submit button within the input container
-        const button = inputContainer.createEl("button");
-        button.textContent = "Submit";
-        button.addEventListener("click", () => {
-            this.submitMessage(this.textBox.value);
-            this.textBox.value = ""; // Clear the text box after sending
-        });
-    }
-
-    addMessage(text: string, sender: "user" | "system") {
-        const messageDiv = this.messagesContainer.createEl("div", {
-            cls: `message ${sender}`,
-        });
-        messageDiv.textContent = text;
-    }
-
-    submitMessage(userMessage: string) {
-        let current_page_content = "";
-        if (userMessage.includes("@current")) {
-            // Find the first MarkdownView that is open in the workspace
-            const markdownView = this.app.workspace
-                .getLeavesOfType("markdown")
-                // @ts-ignore
-                .find((leaf) => leaf.view instanceof MarkdownView && leaf.width > 0)?.view as MarkdownView;
-            if (markdownView && markdownView.editor) {
-                current_page_content = markdownView.editor.getValue();
-            }
-        }
-        this.addMessage(userMessage, "user"); // Display the user message immediately
-
-        const current_page_message = `
-		${userMessage}
-
-		------ Note for Model ---
-		When I am referring to @current, I meant the following:
-
-		${current_page_content}
-		`;
-
-        let final_message = userMessage;
-        if (current_page_content.length > 0) {
-            final_message = current_page_message;
-        }
-
-        const data = { message: final_message };
-        fetch("http://localhost:8000/conversation", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(data),
-        })
-            .then((response) => response.json())
-            .then((data) => {
-                this.addMessage(data.response, "system"); // Display the response
-            })
-            .catch((error) => {
-                console.error("Error:", error);
-            });
-    }
-
-    async onClose() {
-        // Cleanup logic if necessary
-    }
-}
-export const VIEW_NAME_MAIN_CHAT = "main-caret";
-class FullPageChat extends ItemView {
-    chat_id: string;
-    plugin: any;
-    conversation_title: string;
-    textBox: HTMLTextAreaElement;
-    messagesContainer: HTMLElement; // Container for messages
-    conversation: Message[]; // List to store conversation messages
-    is_generating: boolean;
-    chatComponentRef: any;
-    file_name: string;
-
-    constructor(
-        plugin: any,
-        leaf: WorkspaceLeaf,
-        chat_id?: string,
-        conversation: Message[] = [],
-        file_name: string = ""
-    ) {
-        super(leaf);
-        this.plugin = plugin;
-        this.chat_id = chat_id || this.generateRandomID(5);
-        this.conversation = conversation; // Initialize conversation list with default or passed value
-        this.file_name = file_name;
-    }
-
-    getViewType() {
-        return VIEW_NAME_MAIN_CHAT;
-    }
-
-    getDisplayText() {
-        if (this.file_name.length > 1) {
-            return `Chat: ${this.file_name}`;
-        }
-        return `Chat: ${this.chat_id}`;
-    }
-
-    async onOpen() {
-        const metacontainer = this.containerEl.children[1];
-        metacontainer.empty();
-        const container = metacontainer.createEl("div", {
-            cls: "container",
-        });
-        metacontainer.prepend(container);
-
-        // Create a container for messages
-        this.messagesContainer = container.createEl("div", {
-            cls: "messages-container",
-        });
-
-        // Render the React component using createRoot
-        // Render the React component using createRoot
-        const root = createRoot(this.messagesContainer);
-        const chatComponent = React.createElement(ChatComponent, {
-            plugin: this.plugin,
-            chat_id: this.chat_id,
-            initialConversation: this.conversation,
-            onSubmitMessage: this.submitMessage.bind(this),
-            onSave: this.handleSave.bind(this), // Add this line
-            onBulkConvert: this.bulkConvert.bind(this),
-            onNewChat: this.newChat.bind(this),
-            onInsertNote: this.handleInsertNote.bind(this),
-            ref: (ref) => {
-                this.chatComponentRef = ref;
-            }, // Set the ref here
-        });
-        root.render(chatComponent);
-    }
-    async submitMessage(userMessage: string) {
-        if (this.chatComponentRef) {
-            await this.chatComponentRef.submitMessage(userMessage);
-        }
-    }
-    handleInsertNote(callback: (note: string) => void) {
-        console.log("Handle insert note is being called??");
-        new InsertNoteModal(this.app, this.plugin, (note: string) => {
-            console.log("Selected note:", note);
-            callback(note); // Call the callback with the note value
-        }).open();
-    }
-    bulkConvert(checkedContents: string[]) {
-        if (checkedContents.length < 1) {
-            new Notice("No selected messages to convert to note");
-        }
-        new ConvertTextToNoteModal(this.app, this.plugin, checkedContents).open();
-    }
-    handleSave() {
-        // You can access the conversation state from the chatComponentRef if needed
-        if (this.chatComponentRef) {
-            const conversation = this.chatComponentRef.getConversation(); // Call the getConversation method
-            // Save the conversation or perform any other actions
-            this.conversation = conversation;
-            this.saveChat();
-        }
-    }
-
-    addMessage(text: string, sender: "user" | "assistant") {
-        const newMessage = { content: text, role: sender };
-        // Add message to the conversation array
-        // this.conversation.push(newMessage);
-        // Update the conversation in the React component
-        if (this.chatComponentRef) {
-            this.chatComponentRef.addMessage(newMessage);
-        }
-    }
-
-    async streamMessage(stream_response: AsyncIterable<any>) {
-        if (this.plugin.settings.llm_provider === "ollama") {
-            for await (const part of stream_response) {
-                this.conversation[this.conversation.length - 1].content += part.message.content;
-                if (this.chatComponentRef) {
-                    this.chatComponentRef.updateLastMessage(part.message.content);
-                }
-            }
-        }
-        if (this.plugin.settings.llm_provider === "openai" || "groq" || "custom") {
-            for await (const part of stream_response) {
-                const delta_content = part.choices[0]?.delta.content || "";
-                this.conversation[this.conversation.length - 1].content += delta_content;
-                if (this.chatComponentRef) {
-                    this.chatComponentRef.updateLastMessage(delta_content);
-                }
-            }
-        }
-    }
-
-    focusAndPositionCursorInTextBox() {
-        this.textBox.focus();
-    }
-
-    insert_text_into_user_message(text: string) {
-        this.textBox.value += text.trim() + " ";
-    }
-
-    escapeXml(unsafe: string): string {
-        return unsafe.replace(/[<>&'"]/g, (c) => {
-            switch (c) {
-                case "<":
-                    return "&lt;";
-                case ">":
-                    return "&gt;";
-                case "&":
-                    return "&amp;";
-                case "'":
-                    return "&apos;";
-                case '"':
-                    return "&quot;";
-                default:
-                    return c;
-            }
-        });
-    }
-    async newChat() {
-        const currentLeaf = this.app.workspace.activeLeaf;
-        if (currentLeaf) {
-            // This would detach it if we wanted to it. But it causes bugs below.
-            // I actually like the UX this way.
-            // currentLeaf?.detach();
-        }
-
-        const new_leaf = await this.app.workspace.getLeaf(true);
-        new_leaf.setViewState({
-            type: VIEW_NAME_MAIN_CHAT,
-            active: true,
-        });
-    }
-
-    async saveChat() {
-        // Prep the contents itself to be saved
-
-        let file_content = `\`\`\`xml
-        <root>
-		<metadata>\n<id>${this.chat_id}</id>\n</metadata>
-		`;
-
-        let messages = ``;
-        if (this.conversation.length === 0) {
-            return;
-        }
-        for (let i = 0; i < this.conversation.length; i++) {
-            const message = this.conversation[i];
-            const escaped_content = this.escapeXml(message.content);
-            const message_xml = `
-                <message>
-                    <role>${message.role}</role>
-                    <content>${escaped_content}</content>
-                </message>
-            `.trim();
-            messages += message_xml;
-        }
-        let conversation = `<conversation>\n${messages}</conversation></root>\`\`\``;
-        file_content += conversation;
-
-        // And then get the actual save file
-        const chat_folder_path = this.plugin.settings.chat_logs_folder;
-
-        const chat_folder = this.app.vault.getAbstractFileByPath(chat_folder_path);
-        if (!chat_folder) {
-            await this.app.vault.createFolder(chat_folder_path);
-        }
-        let file_to_save_to = await this.plugin.getChatLog(chat_folder_path, this.chat_id);
-
-        let new_chat = true;
-        if (file_to_save_to && file_to_save_to.path) {
-            new_chat = false;
-        }
-
-        const date = new Date();
-        const year = date.getFullYear();
-        const month = ("0" + (date.getMonth() + 1)).slice(-2);
-        const day = ("0" + date.getDate()).slice(-2);
-        const date_path = `/${year}/${month}/${day}`;
-
-        if (this.plugin.settings.chat_logs_date_format_bool) {
-            const fullPath = chat_folder_path + date_path;
-            const pathSegments = fullPath.split("/");
-            let currentPath = "";
-            for (const segment of pathSegments) {
-                if (segment !== "") {
-                    currentPath += segment;
-                    const folderExists = this.app.vault.getAbstractFileByPath(currentPath);
-                    if (!folderExists) {
-                        await this.app.vault.createFolder(currentPath);
-                    }
-                    currentPath += "/";
-                }
-            }
-        }
-
-        if (new_chat) {
-            const file_name = `${this.chat_id}.md`;
-            let file_path = chat_folder_path + "/" + file_name;
-            if (this.plugin.settings.chat_logs_date_format_bool) {
-                file_path = chat_folder_path + date_path + "/" + file_name;
-            }
-            const new_file_created = await this.app.vault.create(file_path, file_content);
-            if (this.plugin.settings.chat_logs_rename_bool) {
-                await this.name_new_chat(new_file_created);
-            }
-        } else {
-            const file = await this.app.vault.getFileByPath(file_to_save_to.path);
-            if (!file) {
-                new Notice("Failed to save file");
-                throw new Error("Failed to save file");
-            }
-            await this.app.vault.modify(file, file_content);
-        }
-    }
-    async name_new_chat(new_file: any) {
-        let new_message = `
-Please create a title for this conversation. Keep it to 3-5 words at max. Be as descriptive with that as you can be.\n\n
-
-Respond in plain text with no formatting.
-`;
-        for (let i = 0; i < this.conversation.length; i++) {
-            const message = this.conversation[i];
-            new_message += `${message.role}:\n${message.content}`;
-        }
-        const conversation = [{ role: "user", content: new_message }];
-        const output = await this.plugin.llm_call(
-            this.plugin.settings.llm_provider,
-            this.plugin.settings.model,
-            conversation
-        );
-        const path = new_file.path;
-        const newPath = `${path.substring(0, path.lastIndexOf("/"))}/${output}.md`;
-        await this.app.vault.rename(new_file, newPath);
-    }
-
-    generateRandomID(length: number) {
-        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        let result = "";
-        for (let i = 0; i < length; i++) {
-            result += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return result;
-    }
-
-    async onClose() {
-        // Cleanup logic if necessary
-    }
-}
-
-class ConvertTextToNoteModal extends Modal {
-    plugin: any;
-    messages: string[];
-    formatting_prompt: string = "Format the below content into a nice markdown document.";
-    fileName: string = "";
-    apply_formatting: boolean = true;
-
-    constructor(app: App, plugin: any, messages: string[]) {
-        super(app);
-        this.plugin = plugin;
-        this.messages = messages;
-    }
-
-    onOpen() {
-        const { contentEl } = this;
-        contentEl.empty();
-
-        contentEl.createEl("h2", { text: "Convert Text to Note" });
-        contentEl.createEl("div", { text: `Converting ${this.messages.length} messages`, cls: "callout" });
-
-        new Setting(contentEl)
-            .setName("File Name")
-            .setDesc("Enter the name for the note.")
-            .addText((text) => {
-                text.setValue(this.fileName).onChange((value) => {
-                    this.fileName = value;
-                });
-            });
-
-        new Setting(contentEl)
-            .setName("Auto Format")
-            .setDesc("Apply prompt formatting to the note.")
-            .addToggle((toggle) => {
-                toggle.setValue(this.apply_formatting).onChange((value) => {
-                    this.apply_formatting = value;
-                });
-            });
-        const textArea = contentEl.createEl("textarea", {
-            text: this.formatting_prompt,
-            cls: "content-l w-full h-20",
-            placeholder: "Enter the formatting song.",
-        });
-        textArea.onchange = (event) => {
-            this.formatting_prompt = (event.target as HTMLTextAreaElement).value;
-        };
-
-        new Setting(contentEl).addButton((button) => {
-            button.setButtonText("Submit").onClick(async () => {
-                if (!this.fileName || this.fileName.trim() === "") {
-                    new Notice("File name must be set before saving");
-                    console.error("Validation Error: File name must exist");
-                    return;
-                }
-
-                let final_content = this.messages.join("\n");
-                if (this.apply_formatting) {
-                    if (this.formatting_prompt.length < 1) {
-                        new Notice("Must have formatting prompt");
-                        return;
-                    }
-                    let final_prompt = `${this.formatting_prompt}\n\n${this.messages.join("\n")}`;
-                    const conversation = [{ role: "user", content: final_prompt }];
-                    const response = await this.plugin.llm_call(
-                        this.plugin.settings.llm_provider,
-                        this.plugin.settings.model,
-                        conversation
-                    );
-                    final_content = response;
-                }
-
-                const file_path = `${this.fileName}.md`;
-
-                // Check if the file path contains parentheses
-                if (file_path.includes("/")) {
-                    const pathParts = file_path.split("/");
-                    let currentPath = "";
-                    for (const part of pathParts.slice(0, -1)) {
-                        currentPath += part;
-                        const folder = await this.app.vault.getAbstractFileByPath(currentPath);
-                        if (!folder) {
-                            try {
-                                await this.app.vault.createFolder(currentPath);
-                            } catch (error) {
-                                console.error("Failed to create folder:", error);
-                            }
-                        }
-                        currentPath += "/";
-                    }
-                }
-                const file = await this.app.vault.getFileByPath(file_path);
-
-                try {
-                    if (file) {
-                        new Notice("File exists already, please choose another name");
-                    } else {
-                        await this.app.vault.create(file_path, final_content);
-                        new Notice("Chat saved to note");
-                        this.close();
-                    }
-                } catch (error) {
-                    console.error("Failed to save note:", error);
-                }
-            });
-        });
-    }
-
-    onClose() {
-        const { contentEl } = this;
-        contentEl.empty();
-    }
-}
-
-class CustomModelModal extends Modal {
-    model_id: string = "";
-    model_name: string = "";
-    streaming: boolean = true;
-    vision: boolean = false;
-    function_calling: boolean = false;
-    context_window: number = 0;
-    url: string = "";
-    api_key: string = "";
-    plugin: any;
-    known_provider: string = "";
-
-    constructor(app: App, plugin: any) {
-        super(app);
-        this.plugin = plugin;
-    }
-
-    onOpen() {
-        const { contentEl } = this;
-        contentEl.empty();
-
-        contentEl.createEl("h2", { text: "Add Custom Model" });
-        contentEl.createEl("div", { text: "Note: The model needs to support the OpenAI spec.", cls: "callout" });
-        contentEl.createEl("div", {
-            text: "Note: The endpoint needs to support CORS. This is experimental and might require additional CORS settings to be added to Caret. Let me know!",
-            cls: "callout",
-        });
-
-        new Setting(contentEl)
-            .setName("Model ID")
-            .setDesc("This is the model. This is the value for the model parameter that will be sent to the endpoint.")
-            .addText((text) => {
-                text.setValue(this.model_id).onChange((value) => {
-                    this.model_id = value;
-                });
-            });
-
-        new Setting(contentEl)
-            .setName("Model Name")
-            .setDesc("This is the human-friendly name only used for displaying.")
-            .addText((text) => {
-                text.setValue(this.model_name).onChange((value) => {
-                    this.model_name = value;
-                });
-            });
-
-        new Setting(contentEl)
-            .setName("Vision")
-            .setDesc("Not used currently, will be used to know if the model can process pictures.")
-            .addToggle((toggle) => {
-                toggle.setValue(this.vision).onChange((value) => {
-                    this.vision = value;
-                });
-            });
-        new Setting(contentEl)
-            .setName("Function Calling")
-            .setDesc("Does the model support function calling?")
-            .addToggle((toggle) => {
-                toggle.setValue(this.function_calling).onChange((value) => {
-                    this.function_calling = value;
-                });
-            });
-
-        new Setting(contentEl)
-            .setName("Context Size")
-            .setDesc("You can normally pull this out of the Hugging Face repo, the config.json.")
-            .addText((text) => {
-                text.setValue(this.context_window.toString()).onChange((value) => {
-                    this.context_window = parseInt(value);
-                });
-            });
-
-        new Setting(contentEl)
-            .setName("Custom Endpoint")
-            .setDesc("This is where the model is located. It can be a remote URL or a server URL running locally.")
-            .addText((text) => {
-                text.setValue(this.url).onChange((value) => {
-                    this.url = value;
-                });
-            });
-
-        new Setting(contentEl)
-            .setName("API Key")
-            .setDesc("This is the API key required to access the model.")
-            .addText((text) => {
-                text.setValue(this.api_key).onChange((value) => {
-                    this.api_key = value;
-                });
-            });
-
-        new Setting(contentEl)
-            .setName("Known Provider")
-            .setDesc("Select this if it's a known endpoint like Ollama.")
-            .addDropdown((dropdown) => {
-                dropdown.addOption("ollama", "Ollama");
-                dropdown.addOption("openrouter", "OpenRouter");
-                dropdown.setValue(this.known_provider).onChange((value) => {
-                    this.known_provider = value;
-                });
-            });
-        new Setting(contentEl).addButton((button) => {
-            button.setButtonText("Submit").onClick(async () => {
-                const settings: CaretPluginSettings = this.plugin.settings;
-                const parsed_context_window = parseInt(this.context_window.toString());
-
-                if (!this.model_name || this.model_name.trim() === "") {
-                    new Notice("Model name must exist");
-                    console.error("Validation Error: Model name must exist");
-                    return;
-                }
-
-                if (
-                    (!this.url || this.url.trim() === "") &&
-                    (!this.known_provider || this.known_provider.trim() === "")
-                ) {
-                    new Notice("Either endpoint or known provider must be set");
-                    console.error("Validation Error: Either endpoint or known provider must be set");
-                    return;
-                }
-
-                if (!this.model_id || this.model_id.trim() === "") {
-                    new Notice("Model ID must have a value");
-                    console.error("Validation Error: Model ID must have a value");
-                    return;
-                }
-
-                if (isNaN(parsed_context_window)) {
-                    new Notice("Context window must be a number");
-                    console.error("Validation Error: Context window must be a number");
-                    return;
-                }
-                const new_model: CustomModels = {
-                    name: this.model_name,
-                    context_window: this.context_window,
-                    function_calling: this.function_calling, // Assuming default value as it's not provided in the form
-                    vision: this.vision,
-                    streaming: true,
-                    endpoint: this.url,
-                    api_key: this.api_key,
-                    known_provider: this.known_provider,
-                };
-
-                settings.custom_endpoints[this.model_id] = new_model;
-
-                await this.plugin.saveSettings();
-
-                this.close();
-            });
-        });
-    }
-
-    onClose() {
-        const { contentEl } = this;
-        contentEl.empty();
-    }
-}
-
-class RemoveCustomModelModal extends Modal {
-    plugin: any;
-
-    constructor(app: App, plugin: any) {
-        super(app);
-        this.plugin = plugin;
-    }
-
-    onOpen() {
-        const { contentEl, modalEl } = this;
-        contentEl.empty();
-        contentEl.createEl("h2", { text: "Remove Custom Model", cls: "insert-file-header" });
-
-        // Set the width of the modal
-        modalEl.style.width = "800px"; // Adjust the width as needed
-
-        const table = contentEl.createEl("table", { cls: "custom-models-table" });
-        const headerRow = table.createEl("tr");
-        headerRow.createEl("th", { text: "Name" });
-        headerRow.createEl("th", { text: "Context Window" });
-        headerRow.createEl("th", { text: "URL" });
-        headerRow.createEl("th", { text: "Action" });
-
-        const custom_models: { [key: string]: CustomModels } = this.plugin.settings.custom_endpoints;
-
-        for (const [model_id, model] of Object.entries(custom_models)) {
-            const row = table.createEl("tr");
-
-            row.createEl("td", { text: model.name });
-            row.createEl("td", { text: model.context_window.toString() });
-            row.createEl("td", { text: model.endpoint });
-
-            const deleteButtonContainer = row.createEl("td", { cls: "delete-btn-container" });
-            const deleteButton = deleteButtonContainer.createEl("button", { text: "Delete", cls: "mod-warning" });
-            deleteButton.addEventListener("click", async () => {
-                delete custom_models[model_id];
-                await this.plugin.saveSettings();
-                this.onOpen(); // Refresh the modal to reflect changes
-            });
-        }
-
-        // Apply minimum width to contentEl
-        contentEl.style.minWidth = "600px";
-    }
-
-    onClose() {
-        const { contentEl } = this;
-        contentEl.empty();
-    }
-}
-
-class SystemPromptModal extends Modal {
-    plugin: any;
-    system_prompt: string = "";
-
-    constructor(app: App, plugin: any) {
-        super(app);
-        this.plugin = plugin;
-    }
-
-    onOpen() {
-        const { contentEl } = this;
-        contentEl.empty();
-
-        contentEl.createEl("h2", { text: "System Prompt" });
-
-        const textArea = contentEl.createEl("textarea", {
-            cls: "system-prompt-textarea",
-            text: this.plugin.settings.system_prompt || "",
-        });
-        textArea.style.height = "400px";
-        textArea.style.width = "100%";
-
-        const submitButton = contentEl.createEl("button", { text: "Submit", cls: "mod-cta" });
-        submitButton.addEventListener("click", async () => {
-            this.plugin.settings.system_prompt = textArea.value;
-            new Notice("System prompt updated");
-            await this.plugin.saveSettings();
-            await this.plugin.loadSettings();
-            this.close();
-        });
-    }
-
-    onClose() {
-        const { contentEl } = this;
-        contentEl.empty();
-    }
-}
-
-interface WorkflowPrompt {
-    model: string;
-    provider: string;
-    delay: string;
-    temperature: string;
-    prompt: string;
-}
-
-class LinearWorkflowEditor extends ItemView {
-    plugin: any;
-    file_path: string;
-    prompts: WorkflowPrompt[];
-    workflow_name: string;
-    system_prompt: string;
-    prompt_container: HTMLDivElement;
-    stored_file_name: string;
-    workflow_type: "linear" | "parallel";
-
-    constructor(plugin: any, leaf: WorkspaceLeaf, file_path: string = "") {
-        super(leaf);
-        this.plugin = plugin;
-        this.file_path = file_path;
-        this.prompts = [];
-        this.workflow_name = "";
-        this.system_prompt = "";
-    }
-
-    getViewType() {
-        return "workflow-editor";
-    }
-
-    getDisplayText() {
-        return "Workflow Editor";
-    }
-
-    async onOpen() {
-        if (this.file_path) {
-            const file = this.app.vault.getAbstractFileByPath(this.file_path);
-            if (file) {
-                const front_matter = await this.plugin.get_frontmatter(file);
-                this.workflow_type = front_matter.caret_prompt;
-                let file_content;
-                if (file instanceof TFile) {
-                    file_content = await this.app.vault.cachedRead(file);
-                    this.workflow_name = file.name.replace(".md", "");
-                    this.stored_file_name = file.name;
-                } else {
-                    throw new Error("The provided file is not a valid TFile.");
-                }
-                this.workflow_name = file.name.replace(".md", "");
-                this.stored_file_name = file.name;
-                const xml_content = file_content.match(/```xml([\s\S]*?)```/)?.[1]?.trim() ?? "";
-                const xml = await this.plugin.parseXml(xml_content);
-                const xml_prompts = xml?.root?.prompt ?? [];
-
-                for (let i = 0; i < xml_prompts.length; i++) {
-                    const prompt = xml_prompts[i]._.trim();
-                    const delay = parseInt(xml_prompts[i].$.delay) || 0;
-                    const model = xml_prompts[i].$.model || "default";
-                    const provider = xml_prompts[i].$.provider || "default";
-                    const temperature = parseFloat(xml_prompts[i].$.temperature) || this.plugin.settings.temperature;
-
-                    if (prompt.trim().length > 0) {
-                        this.prompts.push({
-                            model,
-                            provider,
-                            delay: delay.toString(),
-                            temperature: temperature.toString(),
-                            prompt,
-                        });
-                    }
-                }
-
-                if (xml.root.system_prompt && xml.root.system_prompt.length > 0) {
-                    if (xml.root.system_prompt && xml.root.system_prompt[0] && xml.root.system_prompt[0]._) {
-                        this.system_prompt = xml.root.system_prompt[0]._.trim();
-                    } else {
-                        this.system_prompt = "";
-                    }
-                } else {
-                    this.system_prompt = "";
-                }
-                // Process file content and initialize prompts if necessary
-            }
-        }
-
-        const metacontainer = this.containerEl.children[1];
-        metacontainer.empty();
-        const container = metacontainer.createEl("div", {
-            cls: "workflow_container",
-        });
-        metacontainer.prepend(container);
-
-        // Add description
-
-        // Add workflow name input
-        const title_container = container.createEl("div", { cls: "flex-row" });
-        title_container.createEl("h2", { text: `Workflow Name:`, cls: "w-8" });
-        const workflow_name_input = title_container.createEl("input", {
-            type: "text",
-            cls: "workflow-name-input w-full",
-            value: this.workflow_name,
-        });
-        container.createEl("p", { text: "Add prompts that will then be run in a linear fashion on any input." });
-        workflow_name_input.addEventListener("input", () => {
-            this.workflow_name = workflow_name_input.value;
-        });
-
-        this.prompt_container = container.createEl("div", { cls: "w-full" });
-
-        // Create the system message right away
-        this.add_system_prompt();
-        if (this.prompts.length > 0) {
-            for (let i = 0; i < this.prompts.length; i++) {
-                this.add_prompt(this.prompts[i], true, i);
-            }
-        } else {
-            this.add_prompt();
-        }
-
-        // Create a button to add new prompts
-        const buttonContainer = container.createEl("div", { cls: "button-container bottom-screen-padding" });
-
-        const addPromptButton = buttonContainer.createEl("button", { text: "Add New Prompt" });
-        addPromptButton.addEventListener("click", () => {
-            this.add_prompt();
-        });
-
-        // Create a save workflow button
-        const save_button = buttonContainer.createEl("button", { text: "Save Workflow" });
-        save_button.addEventListener("click", () => {
-            if (this.workflow_name.length === 0) {
-                new Notice("Workflow must be named before saving");
-                return;
-            }
-
-            for (let i = 0; i < this.prompts.length; i++) {
-                const prompt = this.prompts[i];
-                if (!prompt.model) {
-                    new Notice(`Prompt ${i + 1}: Model must have a value`);
-                    return;
-                }
-                if (!prompt.provider) {
-                    new Notice(`Prompt ${i + 1}: Provider must have a value`);
-                    return;
-                }
-                const delay = parseInt(prompt.delay, 10);
-                if (isNaN(delay) || delay < 0 || delay > 60) {
-                    new Notice(`Prompt ${i + 1}: Delay must be a number between 0 and 60`);
-                    return;
-                }
-                const temperature = parseFloat(prompt.temperature);
-                if (isNaN(temperature) || temperature < 0 || temperature > 2) {
-                    new Notice(`Prompt ${i + 1}: Temperature must be a float between 0 and 2`);
-                    return;
-                }
-                if (!prompt.prompt || prompt.prompt.length === 0) {
-                    new Notice(`Prompt ${i + 1}: Prompt must not be empty`);
-                    return;
-                }
-            }
-
-            this.save_workflow();
-        });
-    }
-
-    async save_workflow() {
-        const chat_folder_path = "caret/workflows";
-        const chat_folder = this.app.vault.getAbstractFileByPath(chat_folder_path);
-        if (!chat_folder) {
-            await this.app.vault.createFolder(chat_folder_path);
-        }
-        const system_prompt_string = `
-<system_prompt tag="placeholder_do_not_delete">
-${this.plugin.escapeXml(this.system_prompt)}
-</system_prompt>
-`;
-
-        let prompts_string = ``;
-        for (let i = 0; i < this.prompts.length; i++) {
-            if (this.prompts[i].prompt.length === 0) {
-                continue;
-            }
-            const escaped_content = this.plugin.escapeXml(this.prompts[i].prompt);
-            prompts_string += `
-<prompt model="${this.prompts[i].model || "default"}" provider="${this.prompts[i].provider || "default"}" delay="${
-                this.prompts[i].delay || "default"
-            }" temperature="${this.prompts[i].temperature || "default"}">
-${escaped_content}
-</prompt>`.trim();
-        }
-
-        let file_content = `
----
-caret_prompt: ${this.workflow_type}
-version: 1
----
-\`\`\`xml
-<root>
-${system_prompt_string}
-${prompts_string}
-</root>
-\`\`\`
-        `.trim();
-
-        let file_name = `${this.workflow_name}.md`;
-        let file_path = `${chat_folder_path}/${file_name}`;
-        let old_file_path = `${chat_folder_path}/${this.stored_file_name}`;
-        let file = await this.app.vault.getFileByPath(old_file_path);
-
-        try {
-            if (file) {
-                if (old_file_path !== file_path) {
-                    await this.app.vault.rename(file, file_path);
-                }
-                await this.app.vault.modify(file, file_content);
-                new Notice("Workflow Updated!");
-            } else {
-                await this.app.vault.create(file_path, file_content);
-                new Notice("Workflow Created!");
-            }
-        } catch (error) {
-            console.error("Failed to save chat:", error);
-            if (error.message.includes("File already exists")) {
-                new Notice("A workflow with that name already exists!");
-            } else {
-                console.error("Failed to save chat:", error);
-            }
-        }
-    }
-
-    add_system_prompt(system_prompt: string = "") {
-        // Add a toggle switch for workflow type
-        const dropdown_container = this.prompt_container.createEl("div", {
-            cls: "dropdown-container",
-        });
-
-        dropdown_container.createEl("label", { text: "Workflow Type: ", cls: "dropdown-label" });
-
-        const workflow_type_select = dropdown_container.createEl("select", {
-            cls: "workflow-type-select",
-        });
-
-        const options = [
-            { value: "linear", text: "Linear Workflow" },
-            { value: "parallel", text: "Parallel Workflow" },
-        ];
-
-        options.forEach((option) => {
-            const opt = workflow_type_select.createEl("option", {
-                value: option.value,
-                text: option.text,
-            });
-            if (this.workflow_type === option.value) {
-                opt.selected = true;
-            }
-        });
-
-        workflow_type_select.addEventListener("change", (event) => {
-            this.workflow_type = (event.target as HTMLSelectElement).value as "linear" | "parallel";
-            new Notice(`Workflow type set to ${this.workflow_type}`);
-        });
-
-        this.prompt_container.createEl("h3", { text: "System Prompt" });
-        const text_area = this.prompt_container.createEl("textarea", {
-            cls: "full_width_text_container",
-            placeholder: "Add a system prompt",
-        });
-        text_area.value = this.system_prompt;
-
-        text_area.addEventListener("input", () => {
-            this.system_prompt = text_area.value;
-        });
-    }
-
-    add_prompt(
-        prompt: WorkflowPrompt = { model: "default", provider: "default", delay: "0", temperature: "1", prompt: "" },
-        loading_prompt: boolean = false,
-        index: number | null = null
-    ) {
-        let step_number = index !== null ? index + 1 : this.prompts.length + 1;
-        let array_index = index !== null ? index : this.prompts.length;
-
-        if (step_number === 1) {
-            step_number = 1;
-        }
-        this.prompt_container.createEl("h3", { text: `Prompt ${step_number}` });
-
-        const text_area = this.prompt_container.createEl("textarea", {
-            cls: `w-full workflow_text_area text_area_id_${step_number}`,
-            placeholder: "Add a step into your workflow",
-        });
-        text_area.value = prompt.prompt;
-        text_area.id = `text_area_id_${step_number}`;
-        // Create a container div with class flex-row
-        const options_container = this.prompt_container.createEl("div", {
-            cls: "flex-row",
-        });
-        // Provider label and dropdown
-        const provider_label = options_container.createEl("label", {
-            text: "Provider",
-            cls: "row_items_spacing",
-        });
-        const provider_select = options_container.createEl("select", {
-            cls: "provider_select row_items_spacing",
-        });
-        const settings: CaretPluginSettings = this.plugin.settings;
-        const provider_entries = Object.entries(DEFAULT_SETTINGS.provider_dropdown_options);
-
-        // Ensure the provider select has a default value set from the beginning
-        if (provider_entries.length > 0) {
-            provider_entries.forEach(([provider_key, provider_name]) => {
-                const option = provider_select.createEl("option", { text: provider_name });
-                option.value = provider_key;
-            });
-        }
-
-        // Default to the first provider if prompt.provider is not set
-        if (!prompt.provider && provider_entries.length > 0) {
-            prompt.provider = provider_entries[0][0];
-        }
-
-        // Set the default value after options are added
-        provider_select.value = prompt.provider || provider_entries[0][0];
-
-        // Model label and dropdown
-        const model_label = options_container.createEl("label", {
-            text: "Model",
-            cls: "row_items_spacing",
-        });
-        const model_select = options_container.createEl("select", {
-            cls: "model_select row_items_spacing",
-        });
-
-        // Function to update model options based on selected provider
-        const update_model_options = (provider: string) => {
-            if (!provider) {
-                return;
-            }
-            model_select.innerHTML = ""; // Clear existing options
-            const models = settings.llm_provider_options[provider];
-            Object.entries(models).forEach(([model_key, model_details]) => {
-                const option = model_select.createEl("option", { text: model_details.name });
-                option.value = model_key;
-            });
-            // Set the default value after options are added
-            model_select.value = prompt.model;
-        };
-
-        // Add event listener to provider select to update models dynamically
-        provider_select.addEventListener("change", (event) => {
-            const selected_provider = (event.target as HTMLSelectElement).value;
-            update_model_options(selected_provider);
-        });
-
-        // Initialize model options based on the default or current provider
-        update_model_options(provider_select.value);
-        model_select.value = prompt.model;
-
-        // Temperature label and input
-        const temperature_label = options_container.createEl("label", {
-            text: "Temperature",
-            cls: "row_items_spacing",
-        });
-
-        // Temperature input
-        const temperature_input = options_container.createEl("input", {
-            type: "number",
-            cls: "temperature_input",
-        }) as HTMLInputElement;
-
-        // Set the attributes separately to avoid TypeScript errors
-        temperature_input.min = "0";
-        temperature_input.max = "2";
-        temperature_input.step = "0.1";
-        temperature_input.value = prompt.temperature;
-
-        // Ensure the up and down arrows appear on the input
-        temperature_input.style.appearance = "number-input";
-        temperature_input.style.webkitAppearance = "number-input";
-
-        // Delay label and input
-        const delay_label = options_container.createEl("label", {
-            text: "Delay",
-            cls: "row_items_spacing",
-        });
-        const delay_input = options_container.createEl("input", {
-            type: "number",
-            cls: "delay_input row_items_spacing",
-            // @ts-ignore
-            min: "0",
-            max: "60",
-            step: "1",
-            value: prompt.delay,
-        });
-
-        if (!loading_prompt) {
-            this.prompts.push({
-                model: provider_select.value,
-                provider: provider_select.value,
-                delay: delay_input.value,
-                temperature: temperature_input.value,
-                prompt: text_area.value,
-            });
-        }
-
-        text_area.id = `text_area_id_${array_index}`;
-        provider_select.id = `provider_select_id_${array_index}`;
-        model_select.id = `model_select_id_${array_index}`;
-        temperature_input.id = `temperature_input_id_${array_index}`;
-        delay_input.id = `delay_input_id_${array_index}`;
-
-        text_area.addEventListener("input", () => {
-            const text_area_element = this.prompt_container.querySelector(`#text_area_id_${array_index}`);
-            if (text_area_element) {
-                this.prompts[array_index].prompt = (text_area_element as HTMLInputElement).value;
-            }
-        });
-
-        provider_select.addEventListener("change", () => {
-            const provider_select_element = this.prompt_container.querySelector(`#provider_select_id_${array_index}`);
-            if (provider_select_element) {
-                this.prompts[array_index].provider = provider_select.value;
-                update_model_options(provider_select.value);
-            }
-        });
-
-        model_select.addEventListener("change", () => {
-            const model_select_element = this.prompt_container.querySelector(`#model_select_id_${array_index}`);
-            if (model_select_element) {
-                this.prompts[array_index].model = model_select.value;
-            }
-        });
-
-        temperature_input.addEventListener("input", () => {
-            const temperature_input_element = this.prompt_container.querySelector(
-                `#temperature_input_id_${array_index}`
-            );
-            if (temperature_input_element) {
-                this.prompts[array_index].temperature = temperature_input.value;
-            }
-        });
-
-        delay_input.addEventListener("input", () => {
-            const delay_input_element = this.prompt_container.querySelector(`#delay_input_id_${array_index}`);
-            if (delay_input_element) {
-                this.prompts[array_index].delay = delay_input.value;
-            }
-        });
-    }
-}
 
 export default class CaretPlugin extends Plugin {
     settings: CaretPluginSettings;
@@ -1468,27 +253,6 @@ export default class CaretPlugin extends Plugin {
             },
         });
 
-        // Utility command use during development
-        // this.addCommand({
-        //     id: "test-log",
-        //     name: "test",
-        //     callback: () => {
-        //         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
-        //         // @ts-ignore
-        //         if (!canvas_view?.canvas) {
-        //             return;
-        //         }
-        //         const canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
-
-        //         const selection = canvas.selection;
-        //         const selection_iterator = selection.values();
-        //         const node = selection_iterator.next().value;
-        //         if (!node) {
-        //             return;
-        //         }
-        //         return;
-        //     },
-        // });
         this.addCommand({
             id: "remove-custom-models",
             name: "Remove Custom Models",
@@ -1704,32 +468,6 @@ version: 1
             },
         });
 
-        this.registerEvent(this.app.workspace.on("layout-change", () => {}));
-        const that = this;
-
-        this.registerEvent(
-            this.app.workspace.on("active-leaf-change", (event) => {
-                const currentLeaf = this.app.workspace.activeLeaf;
-                this.unhighlight_lineage();
-
-                if (currentLeaf?.view.getViewType() === "canvas") {
-                    const canvas = currentLeaf.view;
-                    this.patchCanvasMenu();
-                }
-            })
-        );
-        this.registerEditorExtension([redBackgroundField]);
-
-        // Register the sidebar icon
-        this.addChatIconToRibbon();
-
-        this.addCommand({
-            id: "caret-log",
-            name: "Log",
-            callback: async () => {
-                // const currentLeaf = this.app.workspace.activeLeaf;
-            },
-        });
         this.addCommand({
             id: "insert-note",
             name: "Insert Note",
@@ -1747,9 +485,7 @@ version: 1
                 }
 
                 // new InsertNoteModal(this.app, this, view).open();
-                new InsertNoteModal(this.app, this, (note: string) => {
-                    console.log("Selected note:", note);
-                }).open();
+                new InsertNoteModal(this.app, this, (note: string) => {}).open();
             },
         });
 
@@ -1799,6 +535,10 @@ version: 1
                         } else if ("filePath" in obj) {
                             let { filePath } = obj;
                             const file = await this.app.vault.getFileByPath(filePath);
+                            if (!file) {
+                                console.error("Not a file at this file path");
+                                continue;
+                            }
                             if (file.extension === "pdf") {
                                 const text = await this.extractTextFromPDF(file.name);
                                 const text_token_length = this.encoder.encode(text).length;
@@ -1892,7 +632,6 @@ version: 1
         this.addCommand({
             id: "inline-editing",
             name: "Inline Editing",
-            hotkeys: [{ modifiers: ["Mod"], key: "j" }],
             callback: () => {
                 const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
                 if (activeView && activeView.editor) {
@@ -1907,9 +646,54 @@ version: 1
             },
         });
 
-        // Register the custom view
-        this.registerView(VIEW_NAME_SIDEBAR_CHAT, (leaf) => new SidebarChat(leaf));
-        this.registerView(VIEW_NAME_MAIN_CHAT, (leaf) => new FullPageChat(this, leaf));
+        this.addCommand({
+            id: "edit-workflow",
+            name: "Edit Workflow",
+            callback: async () => {
+                const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+                if (editor) {
+                    const current_file = this.app.workspace.getActiveFile();
+                    const front_matter = await this.getFrontmatter(current_file);
+
+                    if (front_matter.caret_prompt !== "linear") {
+                        new Notice("Not a linear workflow");
+                    }
+                    const leaf = this.app.workspace.getLeaf(true);
+                    const linearWorkflowEditor = new LinearWorkflowEditor(this, leaf, current_file?.path);
+                    leaf.open(linearWorkflowEditor);
+                    this.app.workspace.revealLeaf(leaf);
+                    return;
+                }
+            },
+        });
+
+        this.addCommand({
+            id: "apply-inline-changes",
+            name: "Apply Inline Changes",
+            callback: () => {
+                const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+                if (editor) {
+                    let content = editor.getValue();
+                    // Regex to find |-content-|
+                    const deleteRegex = /\|-(.*?)-\|/gs;
+                    // Regex to find |+content+|
+
+                    // Replace all instances of |-content-| with empty string
+                    content = content.replace(deleteRegex, "");
+                    // Replace all instances of |+content+| with empty string
+                    // @ts-ignore
+                    content = content.replaceAll("|+", "");
+                    // @ts-ignore
+                    content = content.replaceAll("+|", "");
+
+                    // Set the modified content back to the editor
+                    editor.setValue(content);
+                    new Notice("Dips applied successfully.");
+                } else {
+                    new Notice("No active markdown editor found.");
+                }
+            },
+        });
 
         this.addCommand({
             id: "continue-chat",
@@ -1918,6 +702,10 @@ version: 1
                 const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
                 if (editor) {
                     const active_file = this.app.workspace.getActiveFile();
+                    if (!active_file) {
+                        new Notice("No active file to continue chat from");
+                        return;
+                    }
                     const active_file_name = active_file.name;
                     let content = editor.getValue();
 
@@ -1946,6 +734,7 @@ version: 1
                     }
                     if (convo_id && messages) {
                         const leaf = this.app.workspace.getLeaf(true);
+                        // @ts-ignore
                         const header_el = leaf.tabHeaderEl;
                         if (header_el) {
                             const title_el = header_el.querySelector(".workspace-tab-header-inner-title");
@@ -1969,59 +758,46 @@ version: 1
                 }
             },
         });
-        this.addCommand({
-            id: "edit-workflow",
-            name: "Edit Workflow",
-            callback: async () => {
-                const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
-                if (editor) {
-                    const current_file = this.app.workspace.getActiveFile();
-                    const front_matter = await this.get_frontmatter(current_file);
 
-                    if (front_matter.caret_prompt !== "linear") {
-                        new Notice("Not a linear workflow");
+        // Helper command for just logging out info needed while developing
+        // this.addCommand({
+        //     id: "caret-log",
+        //     name: "Log",
+        //     callback: async () => {
+
+        //     },
+        // });
+
+        // Registering events.
+
+        // This registers patching the canvas
+        this.registerEvent(
+            this.app.workspace.on("active-leaf-change", (event) => {
+                // TODO - Refactor this to use getActiveViewOfType
+                // Just not sure what the constructor for that is yet
+                const currentLeaf = this.app.workspace.activeLeaf;
+                if (currentLeaf) {
+                    this.unhighlightLineage();
+                    if (currentLeaf?.view.getViewType() === "canvas") {
+                        this.patchCanvasMenu();
                     }
-                    const leaf = this.app.workspace.getLeaf(true);
-                    const linearWorkflowEditor = new LinearWorkflowEditor(this, leaf, current_file?.path);
-                    leaf.open(linearWorkflowEditor);
-                    this.app.workspace.revealLeaf(leaf);
-                    return;
                 }
-            },
-        });
+            })
+        );
+        // Register the editor extension
+        this.registerEditorExtension([redBackgroundField]);
 
-        this.addCommand({
-            id: "apply-inline-changes",
-            name: "Apply Inline Changes",
-            hotkeys: [{ modifiers: ["Mod"], key: "d" }],
-            callback: () => {
-                const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
-                if (editor) {
-                    let content = editor.getValue();
-                    // Regex to find |-content-|
-                    const deleteRegex = /\|-(.*?)-\|/gs;
-                    // Regex to find |+content+|
+        // Register the sidebar icon
+        this.addChatIconToRibbon();
 
-                    // Replace all instances of |-content-| with empty string
-                    content = content.replace(deleteRegex, "");
-                    // Replace all instances of |+content+| with empty string
-                    // @ts-ignore
-                    content = content.replaceAll("|+", "");
-                    // @ts-ignore
-                    content = content.replaceAll("+|", "");
-
-                    // Set the modified content back to the editor
-                    editor.setValue(content);
-                    new Notice("Dips applied successfully.");
-                } else {
-                    new Notice("No active markdown editor found.");
-                }
-            },
-        });
+        // Register Views
+        // Currently not using the sidebar chat.
+        // this.registerView(VIEW_NAME_SIDEBAR_CHAT, (leaf) => new SidebarChat(leaf));
+        this.registerView(VIEW_CHAT, (leaf) => new FullPageChat(this, leaf));
     }
 
     // General functions that the plugin uses
-    async get_frontmatter(file: any) {
+    async getFrontmatter(file: any) {
         let front_matter: any;
         try {
             await this.app.fileManager.processFrontMatter(file, (fm) => {
@@ -2033,7 +809,7 @@ version: 1
         return front_matter;
     }
 
-    async highlight_lineage() {
+    async highlightLineage() {
         await new Promise((resolve) => setTimeout(resolve, 200)); // Sleep for 200 milliseconds
 
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
@@ -2104,6 +880,7 @@ version: 1
             for (let i = 0; i < children.length; i++) {
                 const child = children[i];
                 if (child.hasOwnProperty("extension")) {
+                    // @ts-ignore
                     let contents = await this.app.vault.cachedRead(child);
                     if (!contents) {
                         continue;
@@ -2116,6 +893,7 @@ version: 1
                         fileToSaveTo = child;
                     }
                 } else {
+                    // @ts-ignore
                     folders_to_check.push(child);
                     num_folders_to_check += 1;
                 }
@@ -2143,7 +921,7 @@ version: 1
             }
         });
     }
-    async unhighlight_lineage() {
+    async unhighlightLineage() {
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
         // @ts-ignore
         if (!canvas_view?.canvas) {
@@ -2198,10 +976,10 @@ version: 1
                 async function (...args: any) {
                     const result = await next.call(this, ...args);
 
-                    that.add_new_node_button(this.menuEl);
+                    that.addNewNodeButton(this.menuEl);
 
                     that.add_sparkle_button(this.menuEl);
-                    that.add_extra_actions(this.menuEl);
+                    that.addExtraActions(this.menuEl);
 
                     // await that.add_agent_button(this.menuEl);
 
@@ -2226,12 +1004,12 @@ version: 1
                         );
 
                         if (isNode) {
-                            that.highlight_lineage();
+                            that.highlightLineage();
                         } else {
-                            that.unhighlight_lineage();
+                            that.unhighlightLineage();
                         }
                     } else {
-                        that.unhighlight_lineage();
+                        that.unhighlightLineage();
                     }
 
                     next.call(this, event);
@@ -2296,7 +1074,7 @@ version: 1
         this.register(doubleClickPatcher);
 
         canvasView.scope?.register(["Mod", "Shift"], "ArrowUp", () => {
-            that.create_directional_node(canvas, "top");
+            that.createDirectionalNode(canvas, "top");
         });
 
         canvasView.scope?.register(["Mod"], "ArrowUp", () => {
@@ -2312,23 +1090,23 @@ version: 1
             that.navigate(canvas, "right");
         });
         canvasView.scope?.register(["Mod"], "Enter", () => {
-            that.start_editing_node(canvas);
+            that.startEditingNode(canvas);
         });
 
         canvasView.scope?.register(["Mod", "Shift"], "ArrowUp", () => {
-            that.create_directional_node(canvas, "top");
+            that.createDirectionalNode(canvas, "top");
         });
         canvasView.scope?.register(["Mod", "Shift"], "ArrowDown", () => {
-            that.create_directional_node(canvas, "bottom");
+            that.createDirectionalNode(canvas, "bottom");
         });
         canvasView.scope?.register(["Mod", "Shift"], "ArrowLeft", () => {
-            that.create_directional_node(canvas, "left");
+            that.createDirectionalNode(canvas, "left");
         });
         canvasView.scope?.register(["Mod", "Shift"], "ArrowRight", () => {
-            that.create_directional_node(canvas, "right");
+            that.createDirectionalNode(canvas, "right");
         });
         canvasView.scope?.register(["Mod", "Shift"], "Enter", () => {
-            that.run_graph_chat(canvas);
+            that.runGraphChat(canvas);
         });
 
         if (!this.canvas_patched) {
@@ -2337,7 +1115,7 @@ version: 1
             this.canvas_patched = true;
         }
     }
-    create_directional_node(canvas: any, direction: string) {
+    createDirectionalNode(canvas: any, direction: string) {
         const selection = canvas.selection;
         const selectionIterator = selection.values();
         const node = selectionIterator.next().value;
@@ -2389,7 +1167,7 @@ version: 1
 
         this.createChildNode(canvas, node, x, y, "", from_side, to_side);
     }
-    start_editing_node(canvas: Canvas) {
+    startEditingNode(canvas: Canvas) {
         const selection = canvas.selection;
         const selectionIterator = selection.values();
         const node = selectionIterator.next().value;
@@ -2402,7 +1180,7 @@ version: 1
             console.error("Edit button not found");
         }
     }
-    run_graph_chat(canvas: Canvas) {
+    runGraphChat(canvas: Canvas) {
         canvas.requestSave();
         const selection = canvas.selection;
         const selectionIterator = selection.values();
@@ -2522,46 +1300,21 @@ version: 1
 
         if (targetNodeID) {
             const target_node = viewport_nodes.find((node) => node.id === targetNodeID);
-
-            canvas.selectOnly(target_node);
-            canvas.zoomToSelection(target_node);
+            if (target_node) {
+                // TODO - Figure out the proper way to do this and abstract it out so it's easier to get viewport children
+                // @ts-ignore
+                canvas.selectOnly(target_node);
+                // @ts-ignore
+                canvas.zoomToSelection(target_node);
+            }
         }
-        this.highlight_lineage();
+        this.highlightLineage();
     }
-    // async get_viewport_node(node_id: string): Promise<ViewportNode | undefined> {
-    //     const canvas_view = await this.get_current_canvas_view();
-    //     // @ts-ignore
-    //     const canvas = canvas_view.canvas;
-    //     let viewport_nodes: ViewportNode[] = [];
-    //     let initial_viewport_children = canvas.nodeIndex.data.children;
-    //     if (initial_viewport_children.length > 1) {
-    //         let type_nodes = "nodes";
 
-    //         // If there is more childen then use this path.
-    //         if (initial_viewport_children[0] && "children" in initial_viewport_children[0]) {
-    //             type_nodes = "children";
-    //         }
-    //         if (type_nodes === "children") {
-    //             for (let i = 0; i < initial_viewport_children.length; i++) {
-    //                 const nodes_list = initial_viewport_children[i].children;
-
-    //                 nodes_list.forEach((node: ViewportNode) => {
-    //                     viewport_nodes.push(node);
-    //                 });
-    //             }
-    //         }
-    //         if (type_nodes === "nodes") {
-    //             for (let i = 0; i < initial_viewport_children.length; i++) {
-    //                 const viewport_node = initial_viewport_children[i];
-    //                 viewport_nodes.push(viewport_node);
-    //             }
-    //         }
-    //     }
-    // }
     async parseXml(xmlString: string): Promise<any> {
         try {
             const result = await new Promise((resolve, reject) => {
-                parseString(xmlString, (err, result) => {
+                parseString(xmlString, (err: any, result: any) => {
                     if (err) reject(err);
                     else resolve(result);
                 });
@@ -2607,14 +1360,14 @@ version: 1
                 const numPages = doc.numPages;
 
                 // Load metadata
-                const metadata = await doc.getMetadata();
+                // const metadata = await doc.getMetadata();
 
                 let fullText = "";
                 for (let i = 1; i <= numPages; i++) {
                     const page = await doc.getPage(i);
-                    const viewport = page.getViewport({ scale: 1.0 });
-
                     const content = await page.getTextContent();
+                    // TODO - Clean this up
+                    // @ts-ignore
                     const pageText = content.items.map((item: { str: string }) => item.str).join(" ");
                     fullText += pageText + " ";
 
@@ -2631,7 +1384,7 @@ version: 1
         const fullDocumentText = await loadAndExtractText(file_path);
         return fullDocumentText;
     }
-    add_new_node_button(menuEl: HTMLElement) {
+    addNewNodeButton(menuEl: HTMLElement) {
         if (!menuEl.querySelector(".graph-menu-item")) {
             const graphButtonEl = createEl("button", "clickable-icon graph-menu-item");
             setTooltip(graphButtonEl, "Create User Message", { placement: "top" });
@@ -2656,7 +1409,7 @@ version: 1
             menuEl.appendChild(graphButtonEl);
         }
     }
-    add_extra_actions(menuEl: HTMLElement) {
+    addExtraActions(menuEl: HTMLElement) {
         if (!menuEl.querySelector(".wand")) {
             const graphButtonEl = createEl("button", "clickable-icon wand");
             setTooltip(graphButtonEl, "Actions", { placement: "top" });
@@ -2744,32 +1497,6 @@ version: 1
             menuEl.appendChild(graphButtonEl);
         }
     }
-
-    get_ancestors(nodes: Node[], edges: Edge[], nodeId: string): Node[] {
-        let ancestors: Node[] = [];
-        let currentId: string = nodeId;
-        let processedNodes: Set<string> = new Set();
-
-        while (true) {
-            const incomingEdges: Edge[] = edges.filter((edge) => edge.toNode === currentId);
-            if (incomingEdges.length === 0) {
-                break; // No more ancestors
-            }
-
-            currentId = incomingEdges[0].fromNode;
-            if (processedNodes.has(currentId)) {
-                break; // Avoid infinite loops in cyclic graphs
-            }
-            processedNodes.add(currentId);
-
-            const ancestor: Node | undefined = nodes.find((node) => node.id === currentId);
-            if (ancestor) {
-                ancestors.push(ancestor);
-            }
-        }
-
-        return ancestors;
-    }
     getAllAncestorNodes(nodes: Node[], edges: Edge[], nodeId: string): Node[] {
         let ancestors: Node[] = [];
         let queue: string[] = [nodeId];
@@ -2853,7 +1580,6 @@ version: 1
     async getAllAncestorsWithContext(nodes: Node[], edges: Edge[], nodeId: string): Promise<string> {
         let ancestors_context = "";
         let convo_total_tokens = 0;
-        const bracket_regex = /\[\[(.*?)\]\]/g;
 
         const findAncestorsWithContext = async (nodeId: string) => {
             const node = nodes.find((node) => node.id === nodeId);
@@ -2867,10 +1593,11 @@ version: 1
                     let contextToAdd = "";
 
                     if (ancestor.type === "text") {
-                        const role = ancestor.role;
+                        // @ts-ignore
+                        const role = ancestor.role || "";
                         if (role.length === 0) {
                             let ancestor_text = ancestor.text;
-                            const block_ref_content = await this.get_ref_blocks_content(ancestor_text);
+                            const block_ref_content = await this.getRefBlocksContent(ancestor_text);
                             ancestor_text += block_ref_content;
                             contextToAdd += ancestor_text;
                         }
@@ -2912,7 +1639,7 @@ version: 1
         return ancestors_context;
     }
 
-    async get_ref_blocks_content(node_text: any): Promise<string> {
+    async getRefBlocksContent(node_text: any): Promise<string> {
         const bracket_regex = /\[\[(.*?)\]\]/g;
         let rep_block_content = "";
 
@@ -2938,7 +1665,7 @@ version: 1
             }
             if (file && file_path.includes(".md")) {
                 const file_content = await this.app.vault.cachedRead(file);
-                rep_block_content += file_content; // Update modified_content instead of message.content
+                rep_block_content += `File: ${file_path}\n${file_content}`; // Update modified_content instead of message.content
             } else if (file && file_path.includes(".pdf")) {
                 const pdf_content = await this.extractTextFromPDF(file_path);
                 rep_block_content += `PDF File Name: ${file_path}\n ${pdf_content}`;
@@ -2949,7 +1676,7 @@ version: 1
 
         return rep_block_content;
     }
-    async get_current_node(canvas: Canvas, node_id: string) {
+    async getCurrentNode(canvas: Canvas, node_id: string) {
         await canvas.requestSave(true);
         const nodes_iterator = canvas.nodes.values();
         let node = null;
@@ -2961,7 +1688,7 @@ version: 1
         }
         return node;
     }
-    async get_current_canvas_view() {
+    async getCurrentCanvasView() {
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
         // @ts-ignore
         if (!canvas_view || !canvas_view.canvas) {
@@ -2970,6 +1697,56 @@ version: 1
         // @ts-ignore
         const canvas = canvas_view.canvas;
         return canvas_view;
+    }
+    async getAssociatedNodeContent(currentNode: any, nodes: any[], edges: any[]): Promise<string> {
+        const visited = new Set();
+        const contentBlocks: string[] = [];
+
+        const traverse = async (nodeId: string) => {
+            if (visited.has(nodeId)) return;
+            visited.add(nodeId);
+
+            const node = nodes.find((n) => n.id === nodeId);
+            if (node) {
+                let nodeContent = "";
+                if (node.role === "") {
+                    if (node.type === "text") {
+                        nodeContent = node.text;
+                        const block_ref_content = await this.getRefBlocksContent(node.text);
+                        nodeContent += block_ref_content;
+                    } else if (node.type === "file") {
+                        if (node.file && node.file.includes(".md")) {
+                            const file = this.app.vault.getFileByPath(node.file);
+                            if (file) {
+                                const fileContent = await this.app.vault.cachedRead(file);
+                                nodeContent = `\n\n---------------------------\n\nFile Title: ${node.file}\n${fileContent}`;
+                            } else {
+                                console.error("File not found:", node.file);
+                            }
+                        } else if (node.file && node.file.includes(".pdf")) {
+                            const pdfContent = await this.extractTextFromPDF(node.file);
+                            nodeContent = `\n\n---------------------------\n\nPDF File Title: ${node.file}\n${pdfContent}`;
+                        }
+                    }
+                    contentBlocks.push(nodeContent);
+                }
+            }
+
+            const connectedEdges = edges.filter((edge) => edge.fromNode === nodeId || edge.toNode === nodeId);
+            for (const edge of connectedEdges) {
+                const nextNodeId = edge.fromNode === nodeId ? edge.toNode : edge.fromNode;
+                const next_node = nodes.find((n) => n.id === nextNodeId);
+                if (next_node.role === "user" || next_node.role === "assistant") {
+                    continue;
+                }
+
+                await traverse(nextNodeId);
+            }
+        };
+
+        await traverse(currentNode.id);
+
+        return contentBlocks.join("\n");
     }
 
     async sparkle(
@@ -2990,19 +1767,12 @@ version: 1
         // @ts-ignore
         const canvas = canvas_view.canvas;
 
-        let node = await this.get_current_node(canvas, node_id);
+        let node = await this.getCurrentNode(canvas, node_id);
         if (!node) {
             console.error("Node not found with ID:", node_id);
             return;
         }
         node.unknownData.role = "user";
-
-        // Add user xml if it's not there and re-fetch the node
-        let current_text = node.text;
-        // Check for text in double brackets and log the match
-
-        const ref_blocks_content = await this.get_ref_blocks_content(node.text);
-        current_text += ref_blocks_content;
 
         const canvas_data = canvas.getData();
         const { edges, nodes } = canvas_data;
@@ -3016,12 +1786,17 @@ version: 1
                 const text = await this.app.vault.cachedRead(file);
 
                 // Check for the presence of three dashes indicating the start of the front matter
-                const front_matter = await this.get_frontmatter(file);
+                const front_matter = await this.getFrontmatter(file);
                 if (front_matter.hasOwnProperty("caret_prompt")) {
                     let caret_prompt = front_matter.caret_prompt;
 
                     if (caret_prompt === "parallel" && text) {
-                        const xml_content = text.match(/```xml([\s\S]*?)```/)[1].trim();
+                        const matchResult = text.match(/```xml([\s\S]*?)```/);
+                        if (!matchResult) {
+                            new Notice("Incorrectly formatted parallel workflow.");
+                            return;
+                        }
+                        const xml_content = matchResult[1].trim();
                         const xml = await this.parseXml(xml_content);
                         const system_prompt_list = xml.root.system_prompt;
 
@@ -3079,7 +1854,12 @@ version: 1
                         await Promise.all(sparkle_promises);
                         return;
                     } else if (caret_prompt === "linear") {
-                        const xml_content = text.match(/```xml([\s\S]*?)```/)[1].trim();
+                        const matchResult = text.match(/```xml([\s\S]*?)```/);
+                        if (!matchResult) {
+                            new Notice("Incorrectly formatted linear workflow.");
+                            return;
+                        }
+                        const xml_content = matchResult[1].trim();
                         const xml = await this.parseXml(xml_content);
                         const system_prompt_list = xml.root.system_prompt;
 
@@ -3135,33 +1915,27 @@ version: 1
             }
         }
         const longest_lineage = this.getLongestLineage(nodes, edges, node.id);
-        const ancestors_with_context = await this.getAllAncestorsWithContext(nodes, edges, node.id);
 
-        // TODO - Improve how context gets added
-        let added_context = ``;
+        let convo_total_tokens = 0;
+        let conversation = [];
 
-        added_context += "\n" + ancestors_with_context;
-        added_context = added_context.trim();
-
-        let convo_total_tokens = this.encoder.encode(added_context).length;
-        const current_message_content = `
-${current_text}
-
-Please complete my above request using the below additional content:
-
-${added_context}`;
-
-        const current_message = { role: "user", content: current_message_content };
-        let conversation = [current_message];
-
-        for (let i = 1; i < longest_lineage.length; i++) {
+        for (let i = 0; i < longest_lineage.length; i++) {
             const node = longest_lineage[i];
+            const node_context = await this.getAssociatedNodeContent(node, nodes, edges);
+            // @ts-ignore
             let role = node.role || "";
             if (role === "user") {
                 let content = node.text;
                 // Only for the first node
-                const block_ref_content = await this.get_ref_blocks_content(content);
-                content += `Referenced content:\n${block_ref_content}`;
+                // And get referencing content here.
+                const block_ref_content = await this.getRefBlocksContent(content);
+                if (block_ref_content.length > 0) {
+                    content += `\n${block_ref_content}`;
+                }
+                if (node_context.length > 0) {
+                    content += `\n${node_context}`;
+                }
+
                 if (content && content.length > 0) {
                     const user_message_tokens = this.encoder.encode(content).length;
                     if (user_message_tokens + convo_total_tokens > this.settings.context_window) {
@@ -3206,7 +1980,7 @@ ${added_context}`;
         }
         const node_content = ``;
         const x = node.x + node.width + 200;
-        const new_node = await this.createChildNode(canvas, node, x, node.y, node_content, "right", "left", "groq");
+        const new_node = await this.createChildNode(canvas, node, x, node.y, node_content, "right", "left");
         if (!new_node) {
             throw new Error("Invalid new node");
         }
@@ -3553,7 +2327,7 @@ ${added_context}`;
             setTooltip(buttonEl, "Sparkle", { placement: "top" });
             setIcon(buttonEl, "lucide-sparkles");
             buttonEl.addEventListener("click", async () => {
-                const canvasView = this.app.workspace.getMostRecentLeaf().view;
+                const canvasView = this.app.workspace.getMostRecentLeaf()?.view;
                 // @ts-ignore
                 if (!canvasView.canvas) {
                     return;
@@ -3695,7 +2469,7 @@ ${added_context}`;
     addChatIconToRibbon() {
         this.addRibbonIcon("message-square", "Caret Chat", async (evt) => {
             await this.app.workspace.getLeaf(true).setViewState({
-                type: VIEW_NAME_MAIN_CHAT,
+                type: VIEW_CHAT,
                 active: true,
             });
         });

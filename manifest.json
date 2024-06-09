@@ -1,9 +1,9 @@
 {
     "id": "caret",
     "name": "Caret",
-    "version": "0.2.30",
+    "version": "0.2.31",
     "minAppVersion": "1.5.12",
-    "description": "Caret, the tool that accelerates with you.",
+    "description": "Use LLMs in a local-first, private way directly inside your Obsidian vault. With Chat + Canvas functionality.",
     "author": "Jake Colling",
     "authorUrl": "https://twitter.com/JacobColling",
     "fundingUrl": "https://twitter.com/JacobColling",

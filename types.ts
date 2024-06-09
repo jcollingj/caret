@@ -16,15 +16,11 @@ export interface ViewportNode {
     containerEl: HTMLElement;
     contentBlockerEl: HTMLElement;
     contentEl: HTMLElement;
-    destroyed: boolean;
     height: number;
     id: string;
-    initialized: boolean;
-    isContentMounted: boolean;
     isEditing: boolean;
     nodeEl: HTMLElement;
     placeholderEl: HTMLElement;
-    renderedZIndex: number;
     resizeDirty: boolean;
     text: string;
     unknownData: {
@@ -125,4 +121,30 @@ export interface NewNode {
     height: number;
     type: "text" | "file";
     content: string;
+}
+export interface WorkflowPrompt {
+    model: string;
+    provider: string;
+    delay: string;
+    temperature: string;
+    prompt: string;
+}
+export interface CaretPluginSettings {
+    caret_version: string;
+    chat_logs_folder: string;
+    chat_logs_date_format_bool: boolean;
+    chat_logs_rename_bool: boolean;
+    chat_send_chat_shortcut: string;
+    model: string;
+    llm_provider: string;
+    openai_api_key: string;
+    groq_api_key: string;
+    open_router_key: string;
+    anthropic_api_key: string;
+    context_window: number;
+    custom_endpoints: { [model: string]: CustomModels };
+    system_prompt: string;
+    temperature: number;
+    llm_provider_options: LLMProviderOptions;
+    provider_dropdown_options: { [key: string]: string };
 }
