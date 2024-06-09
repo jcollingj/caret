@@ -1,5 +1,5 @@
 # Caret
-Caret is an Obsidian plugin that brings the power LLMs into your Obsidian Vault. Caret follows all the main Obsidian philosophies. It's local-first, privacy preserving and stores all data as local files.
+Caret is an Obsidian plugin that brings the power of LLMs into your Obsidian Vault. Caret follows all the main Obsidian philosophies. It's local-first, privacy preserving and stores all generated data as local files.
 
 
 # Features:
@@ -45,12 +45,12 @@ Caret had about $2,000 in sales before I decided to opensource it. I'm not keepi
 
 To participate in bounties DM me about which bounty you want to complete. I'll send payouts via Venmo, Zelle, or some other method TBD. You should complete a bounty within about a week of taking it on. I will try to have it so only one person is working on a given bounty at a time.
 
-Total Funds: $2,000
-Funds Remaining: $2,000
-Bounties Completed: 0
-Funds Disbursed to communtiy members: $0
-Bounties In Progress: 0
-Bounties Open:
+- Total Funds: $2,000
+- Funds Remaining: $2,000
+- Bounties Completed: 0
+- Funds Disbursed to communtiy members: $0
+- Bounties In Progress: 0
+- Bounties Open: 5
 
 Open Bounties:
 - **Sidebar Chat**: 
