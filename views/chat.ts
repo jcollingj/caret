@@ -79,9 +79,7 @@ export class FullPageChat extends ItemView {
         }
     }
     handleInsertNote(callback: (note: string) => void) {
-        console.log("Handle insert note is being called??");
         new InsertNoteModal(this.app, this.plugin, (note: string) => {
-            console.log("Selected note:", note);
             callback(note); // Call the callback with the note value
         }).open();
     }
