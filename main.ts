@@ -1533,10 +1533,6 @@ version: 1
         return ancestors;
     }
 
-    // getLongestLineage(nodes: Node[], edges: Edge[], nodeId: string): Node[] {
-    //     return CaretPlugin.getLongestLineage(nodes, edges, nodeId);
-    // }
-
     static getLongestLineage(nodes: Node[], edges: Edge[], nodeId: string): Node[] {
         let longestLineage: Node[] = [];
 
@@ -1934,19 +1930,8 @@ version: 1
         }
 
         const { conversation } = await this.buildConversation(node, nodes, edges, local_system_prompt);
+        const { model, provider, temperature } = this.mergeSettingsAndSparkleConfig(sparkle_config);
 
-        let model = this.settings.model;
-        let provider = this.settings.llm_provider;
-        let temperature = this.settings.temperature;
-        if (sparkle_config.model !== "default") {
-            model = sparkle_config.model;
-        }
-        if (sparkle_config.provider !== "default") {
-            provider = sparkle_config.provider;
-        }
-        if (sparkle_config.temperature !== this.settings.temperature) {
-            temperature = sparkle_config.temperature;
-        }
         const node_content = ``;
         const x = node.x + node.width + 200;
         const new_node = await this.createChildNode(canvas, node, x, node.y, node_content, "right", "left");
