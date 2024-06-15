@@ -31,6 +31,7 @@ import { NewNode, CaretPluginSettings } from "./types";
 import { CustomModelModal } from "./modals/addCustomModel";
 import { LinearWorkflowEditor } from "./views/workflowEditor";
 import { FullPageChat, VIEW_CHAT } from "./views/chat";
+import { CaretCanvas } from "./caret_canvas";
 var parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
@@ -829,7 +830,7 @@ version: 1
         const nodes_array = Array.from(nodes_iterator);
         const canvas_data = canvas.getData();
         const { edges, nodes } = canvas_data;
-        const longest_lineage = await this.getLongestLineage(nodes, edges, node.id);
+        const longest_lineage = await CaretPlugin.getLongestLineage(nodes, edges, node.id);
 
         // Create a set to track lineage node IDs for comparison
         const lineage_node_ids = new Set(longest_lineage.map((node) => node.id));
@@ -1480,6 +1481,18 @@ version: 1
                         canvas.requestFrame();
                     },
                 },
+                {
+                    name: "Refresh",
+                    icon: "lucide-refresh-ccw",
+                    tooltip: "Refresh",
+                    callback: () => {
+                        this.refreshNode(node.id, this.settings.system_prompt, {
+                            model: "default",
+                            provider: "default",
+                            temperature: 1,
+                        });
+                    },
+                },
             ];
 
             const submenuEl = createSubmenu(submenuConfigs);
@@ -1519,7 +1532,12 @@ version: 1
 
         return ancestors;
     }
-    getLongestLineage(nodes: Node[], edges: Edge[], nodeId: string): Node[] {
+
+    // getLongestLineage(nodes: Node[], edges: Edge[], nodeId: string): Node[] {
+    //     return CaretPlugin.getLongestLineage(nodes, edges, nodeId);
+    // }
+
+    static getLongestLineage(nodes: Node[], edges: Edge[], nodeId: string): Node[] {
         let longestLineage: Node[] = [];
 
         function findLongestPath(currentId: string, path: Node[]): void {
@@ -1914,58 +1932,9 @@ version: 1
                 console.error("File not found or is not a readable file:", file_path);
             }
         }
-        const longest_lineage = this.getLongestLineage(nodes, edges, node.id);
 
-        let convo_total_tokens = 0;
-        let conversation = [];
+        const { conversation } = await this.buildConversation(node, nodes, edges, local_system_prompt);
 
-        for (let i = 0; i < longest_lineage.length; i++) {
-            const node = longest_lineage[i];
-            const node_context = await this.getAssociatedNodeContent(node, nodes, edges);
-            // @ts-ignore
-            let role = node.role || "";
-            if (role === "user") {
-                let content = node.text;
-                // Only for the first node
-                // And get referencing content here.
-                const block_ref_content = await this.getRefBlocksContent(content);
-                if (block_ref_content.length > 0) {
-                    content += `\n${block_ref_content}`;
-                }
-                if (node_context.length > 0) {
-                    content += `\n${node_context}`;
-                }
-
-                if (content && content.length > 0) {
-                    const user_message_tokens = this.encoder.encode(content).length;
-                    if (user_message_tokens + convo_total_tokens > this.settings.context_window) {
-                        new Notice("Exceeding context window while adding user message. Trimming content");
-                        break;
-                    }
-                    const message = {
-                        role,
-                        content,
-                    };
-                    if (message.content.length > 0) {
-                        conversation.push(message);
-                        convo_total_tokens += user_message_tokens;
-                    }
-                }
-            } else if (role === "assistant") {
-                const content = node.text;
-                const message = {
-                    role,
-                    content,
-                };
-                conversation.push(message);
-            } else if (role === "system") {
-                local_system_prompt = node.text;
-            }
-        }
-        conversation.reverse();
-        if (local_system_prompt.length > 0) {
-            conversation.unshift({ role: "system", content: local_system_prompt });
-        }
         let model = this.settings.model;
         let provider = this.settings.llm_provider;
         let temperature = this.settings.temperature;
@@ -2005,6 +1974,115 @@ version: 1
             new_node.setText(content);
         }
     }
+
+    async buildConversation(node: Node, nodes: Node[], edges: any[], system_prompt: string) {
+        const longest_lineage = CaretPlugin.getLongestLineage(nodes, edges, node.id);
+
+        const conversation = [];
+        let local_system_prompt = system_prompt;
+        let convo_total_tokens = 0;
+        const settings = this.settings;
+
+        for (let i = 0; i < longest_lineage.length; i++) {
+            const node = longest_lineage[i];
+            const node_context = await this.getAssociatedNodeContent(node, nodes, edges);
+            // @ts-ignore
+            let role = node.role || "";
+            if (role === "user") {
+                let content = node.text;
+                // Only for the first node
+                // And get referencing content here.
+                const block_ref_content = await this.getRefBlocksContent(content);
+                if (block_ref_content.length > 0) {
+                    content += `\n${block_ref_content}`;
+                }
+                if (node_context.length > 0) {
+                    content += `\n${node_context}`;
+                }
+
+                if (content && content.length > 0) {
+                    const user_message_tokens = this.encoder.encode(content).length;
+                    if (user_message_tokens + convo_total_tokens > settings.context_window) {
+                        new Notice("Exceeding context window while adding user message. Trimming content");
+                        break;
+                    }
+                    const message = {
+                        role,
+                        content,
+                    };
+                    if (message.content.length > 0) {
+                        conversation.push(message);
+                        convo_total_tokens += user_message_tokens;
+                    }
+                }
+            } else if (role === "assistant") {
+                const content = node.text;
+                const message = {
+                    role,
+                    content,
+                };
+                conversation.push(message);
+            } else if (role === "system") {
+                local_system_prompt = node.text;
+            }
+        }
+        conversation.reverse();
+        if (local_system_prompt.length > 0) {
+            conversation.unshift({ role: "system", content: local_system_prompt });
+        }
+        return { conversation };
+    }
+
+    mergeSettingsAndSparkleConfig(sparkle_config: SparkleConfig): SparkleConfig {
+        const settings = this.settings;
+        let model = settings.model;
+        let provider = settings.llm_provider;
+        let temperature = settings.temperature;
+        if (sparkle_config.model !== "default") {
+            model = sparkle_config.model;
+        }
+        if (sparkle_config.provider !== "default") {
+            provider = sparkle_config.provider;
+        }
+        if (sparkle_config.temperature !== settings.temperature) {
+            temperature = sparkle_config.temperature;
+        }
+        return { model, provider, temperature };
+    }
+
+    async refreshNode(
+        refreshed_node_id: string,
+        system_prompt: string = "",
+        sparkle_config: SparkleConfig = {
+            model: "default",
+            provider: "default",
+            temperature: 1,
+        }
+    ) {
+        const caret_canvas = CaretCanvas.fromPlugin(this);
+        const refreshed_node = caret_canvas.getNode(refreshed_node_id);
+
+        const longest_lineage = refreshed_node.getLongestLineage();
+        const parent_node = longest_lineage[1];
+
+        const { conversation } = await this.buildConversation(
+            parent_node,
+            caret_canvas.nodes,
+            caret_canvas.edges,
+            system_prompt
+        );
+        const { provider, model, temperature } = this.mergeSettingsAndSparkleConfig(sparkle_config);
+
+        if (this.settings.llm_provider_options[provider][model].streaming) {
+            const stream = await this.llm_call_streaming(provider, model, conversation, temperature);
+            refreshed_node.node.text = "";
+            await this.update_node_content(refreshed_node.id, stream, provider);
+        } else {
+            const content = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
+            refreshed_node.node.text = "content";
+        }
+    }
+
     async update_node_content(node_id: string, stream: any, llm_provider: string) {
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
         // @ts-ignore
@@ -2440,6 +2518,7 @@ version: 1
         });
         return hexArray.join("");
     }
+
     addEdgeToCanvas(canvas: any, edgeID: string, fromEdge: any, toEdge: any) {
         if (!canvas) {
             return;
