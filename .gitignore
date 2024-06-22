@@ -5,3 +5,4 @@ dist/
 data.json
 generate_uuids.ts
 *.code-workspace
+main.js
