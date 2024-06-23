@@ -14,7 +14,7 @@ export class RemoveCustomModelModal extends Modal {
         contentEl.createEl("h2", { text: "Remove Custom Model", cls: "insert-file-header" });
 
         // Set the width of the modal
-        modalEl.style.width = "800px"; // Adjust the width as needed
+        modalEl.classList.add("custom-model-modal-container"); // Apply the CSS class here
 
         const table = contentEl.createEl("table", { cls: "custom-models-table" });
         const headerRow = table.createEl("tr");
@@ -40,9 +40,6 @@ export class RemoveCustomModelModal extends Modal {
                 this.onOpen(); // Refresh the modal to reflect changes
             });
         }
-
-        // Apply minimum width to contentEl
-        contentEl.style.minWidth = "600px";
     }
 
     onClose() {

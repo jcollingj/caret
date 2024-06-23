@@ -15,11 +15,9 @@ export class SystemPromptModal extends Modal {
         contentEl.createEl("h2", { text: "System Prompt" });
 
         const textArea = contentEl.createEl("textarea", {
-            cls: "system-prompt-textarea",
+            cls: "system-prompt-modal-text-area", // Apply the CSS class here
             text: this.plugin.settings.system_prompt || "",
         });
-        textArea.style.height = "400px";
-        textArea.style.width = "100%";
 
         const submitButton = contentEl.createEl("button", { text: "Submit", cls: "mod-cta" });
         submitButton.addEventListener("click", async () => {

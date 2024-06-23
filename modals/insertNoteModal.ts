@@ -62,7 +62,8 @@ export class InsertNoteModal extends Modal {
             const filtered_files = filter_files(inputField.value);
 
             // Clear previous file display
-            filesDisplay.innerHTML = "";
+            // filesDisplay.innerHTML = "";
+            filesDisplay.empty();
 
             // Add filtered files to the display
             filtered_files.forEach((file) => {

@@ -19,22 +19,15 @@ export class CMDJModal extends Modal {
         const { contentEl } = this;
         const textDisplay = contentEl.createEl("div", {
             text: this.selectedText,
+            cls: "inline-editing-container-div", // Apply the CSS class here
         });
-        textDisplay.style.height = "60px";
-        textDisplay.style.overflow = "scroll";
 
         contentEl.createEl("br"); // Line break
 
         const textArea = contentEl.createEl("textarea", {
             placeholder: "Type here...",
+            cls: "inline-editing-textarea", // Apply the CSS class here
         });
-        textArea.style.width = "100%";
-        textArea.style.minHeight = "100px";
-        textArea.style.resize = "none";
-        textArea.oninput = () => {
-            textArea.style.height = ""; // Reset the height
-            textArea.style.height = `${textArea.scrollHeight}px`;
-        };
 
         const buttonContainer = contentEl.createEl("div", { cls: "button-container" });
 

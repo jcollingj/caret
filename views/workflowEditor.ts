@@ -333,7 +333,9 @@ ${prompts_string}
             if (!provider) {
                 return;
             }
-            model_select.innerHTML = ""; // Clear existing options
+            while (model_select.firstChild) {
+                model_select.removeChild(model_select.firstChild);
+            }
             const models = settings.llm_provider_options[provider];
             Object.entries(models).forEach(([model_key, model_details]) => {
                 const option = model_select.createEl("option", { text: model_details.name });
@@ -362,7 +364,7 @@ ${prompts_string}
         // Temperature input
         const temperature_input = options_container.createEl("input", {
             type: "number",
-            cls: "temperature_input",
+            cls: "workflow-editor-temperature-input temperature_input", // Apply the CSS class here
         }) as HTMLInputElement;
 
         // Set the attributes separately to avoid TypeScript errors
@@ -370,10 +372,6 @@ ${prompts_string}
         temperature_input.max = "2";
         temperature_input.step = "0.1";
         temperature_input.value = prompt.temperature;
-
-        // Ensure the up and down arrows appear on the input
-        temperature_input.style.appearance = "number-input";
-        temperature_input.style.webkitAppearance = "number-input";
 
         // Delay label and input
         const delay_label = options_container.createEl("label", {

@@ -32,7 +32,7 @@ import { CustomModelModal } from "./modals/addCustomModel";
 import { LinearWorkflowEditor } from "./views/workflowEditor";
 import { FullPageChat, VIEW_CHAT } from "./views/chat";
 import { CaretCanvas } from "./caret_canvas";
-var parseString = require("xml2js").parseString;
+const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
     caret_version: "0.2.30",
@@ -287,7 +287,8 @@ export default class CaretPlugin extends Plugin {
                 if (!canvas_view?.canvas) {
                     return;
                 }
-                const canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
+                // @ts-ignore TODO: Type this better
+                const canvas = canvas_view.canvas;
 
                 const selection = canvas.selection;
 
@@ -818,7 +819,8 @@ version: 1
         if (!canvas_view?.canvas) {
             return;
         }
-        const canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
+        // @ts-ignore TODO: Type this better
+        const canvas = canvas_view.canvas; // Assuming canvas is a property of the view
 
         const selection = canvas.selection;
         const selection_iterator = selection.values();
@@ -928,7 +930,8 @@ version: 1
         if (!canvas_view?.canvas) {
             return;
         }
-        const canvas = (canvas_view as any).canvas;
+        // @ts-ignore TODO: Type this better
+        const canvas = canvas_view.canvas;
         const nodes_iterator = canvas.nodes.values();
         const nodes_array = Array.from(nodes_iterator);
 
@@ -1023,7 +1026,8 @@ version: 1
                     if (!canvas_view?.canvas) {
                         return;
                     }
-                    const canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
+                    // @ts-ignore TODO: Type this better
+                    const canvas = canvas_view.canvas; // Assuming canvas is a property of the view
                     const nodes = canvas.nodes;
 
                     for (const node of nodes.values()) {
@@ -1043,16 +1047,11 @@ version: 1
                                 if (node.unknownData.role.length > 0) {
                                     if (!customDisplayDiv) {
                                         customDisplayDiv = document.createElement("div");
-                                        customDisplayDiv.id = "custom-display";
-                                        customDisplayDiv.style.width = "100%";
-                                        customDisplayDiv.style.height = "40px";
-                                        customDisplayDiv.style.backgroundColor = "rgba(211, 211, 211, 0.8)";
-                                        customDisplayDiv.style.padding = "2px";
-                                        customDisplayDiv.style.paddingLeft = "8px";
-                                        customDisplayDiv.style.paddingTop = "4px";
+                                        customDisplayDiv.id = "custom-display"; // Ensure the ID is set here to prevent multiple creations
                                         targetDiv.parentNode.insertBefore(customDisplayDiv, targetDiv);
                                     }
 
+                                    // Update the text content based on the role
                                     if (node.unknownData.role === "assistant") {
                                         customDisplayDiv.textContent = "🤖";
                                     } else if (node.unknownData.role === "user") {
@@ -1499,12 +1498,14 @@ version: 1
 
             // Append the submenu to the main button
             graphButtonEl.appendChild(submenuEl);
-
             let submenuVisible = false;
-
             graphButtonEl.addEventListener("click", () => {
                 submenuVisible = !submenuVisible;
-                submenuEl.style.display = submenuVisible ? "grid" : "none";
+                if (submenuVisible) {
+                    submenuEl.classList.add("visible");
+                } else {
+                    submenuEl.classList.remove("visible");
+                }
             });
 
             menuEl.appendChild(graphButtonEl);
