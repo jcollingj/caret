@@ -11,7 +11,7 @@ Caret is an Obsidian plugin that brings the power of LLMs into your Obsidian Vau
 ## Discord
 Come hang in the Discord! Everyone's welcome! Targeted for people using Obsidian, LLMs and AI tools.
 
-https://discord.com/invite/zazuUJdU
+https://discord.gg/8FyGfcH24N
 
 The discord is for people to:
 - Hang
