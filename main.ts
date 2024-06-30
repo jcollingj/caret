@@ -17,7 +17,7 @@ const pdf_worker_url = URL.createObjectURL(pdf_worker_blob);
 pdfjs.GlobalWorkerOptions.workerSrc = pdf_worker_url;
 
 import { Canvas, ViewportNode, Message, Node, Edge, SparkleConfig } from "./types";
-import { MarkdownView, Modal, Notice, Plugin, setTooltip, setIcon, requestUrl } from "obsidian";
+import { MarkdownView, Modal, Notice, Plugin, setTooltip, setIcon, requestUrl, editorEditorField } from "obsidian";
 import { CanvasFileData, CanvasNodeData, CanvasTextData } from "obsidian/canvas";
 
 // Import all of the views, components, models, etc
@@ -1419,7 +1419,7 @@ version: 1
                 name: string;
                 icon: string;
                 tooltip: string;
-                callback: () => void;
+                callback: () => void | Promise<void>;
             }
 
             function createSubmenu(configs: SubmenuItemConfig[]): HTMLElement {
@@ -1449,57 +1449,169 @@ version: 1
             const selectionIterator = selection.values();
             const node = selectionIterator.next().value;
 
-            const submenuConfigs: SubmenuItemConfig[] = [
-                {
-                    name: "User",
-                    icon: "lucide-user",
-                    tooltip: "Set role to user",
-                    callback: () => {
-                        node.unknownData.role = "user";
-                        node.unknownData.displayOverride = false;
-                        canvas.requestFrame();
-                    },
-                },
-                {
-                    name: "Assistant",
-                    icon: "lucide-bot",
-                    tooltip: "Set role to assistant",
-                    callback: () => {
-                        node.unknownData.role = "assistant";
-                        node.unknownData.displayOverride = false;
-                        canvas.requestFrame();
-                    },
-                },
-                {
-                    name: "System Prompt",
-                    icon: "lucide-monitor-check",
-                    tooltip: "Set system prompt",
-                    callback: () => {
-                        node.unknownData.role = "system";
-                        node.unknownData.displayOverride = false;
-                        canvas.requestFrame();
-                    },
-                },
-                {
-                    name: "Refresh",
-                    icon: "lucide-refresh-ccw",
-                    tooltip: "Refresh",
-                    callback: () => {
-                        this.refreshNode(node.id, this.settings.system_prompt, {
-                            model: "default",
-                            provider: "default",
-                            temperature: 1,
-                        });
-                    },
-                },
-            ];
-
-            const submenuEl = createSubmenu(submenuConfigs);
-
-            // Append the submenu to the main button
-            graphButtonEl.appendChild(submenuEl);
             let submenuVisible = false;
+
             graphButtonEl.addEventListener("click", () => {
+                const submenuConfigs: SubmenuItemConfig[] = [
+                    {
+                        name: "User",
+                        icon: "lucide-user",
+                        tooltip: "Set role to user",
+                        callback: () => {
+                            node.unknownData.role = "user";
+                            node.unknownData.displayOverride = false;
+                            canvas.requestFrame();
+                        },
+                    },
+                    {
+                        name: "Assistant",
+                        icon: "lucide-bot",
+                        tooltip: "Set role to assistant",
+                        callback: () => {
+                            node.unknownData.role = "assistant";
+                            node.unknownData.displayOverride = false;
+                            canvas.requestFrame();
+                        },
+                    },
+                    {
+                        name: "System Prompt",
+                        icon: "lucide-monitor-check",
+                        tooltip: "Set system prompt",
+                        callback: () => {
+                            node.unknownData.role = "system";
+                            node.unknownData.displayOverride = false;
+                            canvas.requestFrame();
+                        },
+                    },
+                    {
+                        name: "Refresh",
+                        icon: "lucide-refresh-ccw",
+                        tooltip: "Refresh",
+                        callback: () => {
+                            this.refreshNode(node.id, this.settings.system_prompt, {
+                                model: "default",
+                                provider: "default",
+                                temperature: 1,
+                            });
+                        },
+                    },
+                    {
+                        name: "Double Sparkle",
+                        icon: "lucide-sparkles",
+                        tooltip: "Sparkle twice",
+                        callback: async () => {
+                            await canvas.requestSave(true);
+                            const node_id = node.id;
+                            await this.sparkle(node_id, undefined, undefined, 2, 200, 10);
+                            canvas.requestFrame();
+                        },
+                    },
+                    {
+                        name: "Condense",
+                        icon: "lucide-arrow-up-narrow-wide",
+                        tooltip: "Condense node",
+                        callback: async () => {
+                            await canvas.requestSave(true);
+                            const content = node.text || node.unknownData.text;
+
+                            const llm_prompt = {
+                                role: "user",
+                                content: `Condense the following text while preserving the original meaning. Return the condensed text by itself.
+                        Text: ${content}`,
+                            };
+
+                            const condensed_content = await this.llm_call(
+                                this.settings.llm_provider,
+                                this.settings.model,
+                                [llm_prompt]
+                            );
+
+                            node.setText(condensed_content);
+                            const word_count = condensed_content.split(/\s+/).length;
+                            const number_of_lines = Math.ceil(word_count / 7);
+                            if (word_count > 500) {
+                                node.width = 750;
+                                node.height = Math.max(200, number_of_lines * 35);
+                            } else {
+                                node.height = Math.max(200, number_of_lines * 45);
+                            }
+
+                            node.unknownData.text = condensed_content;
+                            node.text = condensed_content;
+                            node.render();
+
+                            canvas.requestFrame();
+                        },
+                    },
+                ];
+
+                if (
+                    node &&
+                    this.settings.llm_provider_options[this.settings.llm_provider][this.settings.model]
+                        .function_calling &&
+                    (node.text || node.unknownData.type == "text")
+                ) {
+                    submenuConfigs.push({
+                        name: "Node Splitter",
+                        icon: "lucide-split",
+                        tooltip: "Split node",
+                        callback: async () => {
+                            const content = node.text || node.unknownData.text;
+
+                            const llm_prompt = {
+                                role: "user",
+                                content: `Split the following text into chunks if possible. Each chunk should aim to contain all of a logical section. Return the chunks as a list of strings with no other text.
+                            Example of expected output format: ["Chunk 1", "Chunk 2", "Chunk 3"]
+                            Text: ${content}`,
+                            };
+
+                            const split_content = await this.llm_call(this.settings.llm_provider, this.settings.model, [
+                                llm_prompt,
+                            ]);
+
+                            let split_content_array = [];
+                            try {
+                                // attempt to parse the response
+                                split_content_array = JSON.parse(split_content);
+                            } catch (error) {
+                                console.error("Parsing error:", error);
+                                new Notice("Node is unable to be split");
+                                return;
+                            }
+
+                            const newX = node.x + node.width + 50;
+                            const totalHeight = (300 + 100) * split_content_array.length - 100;
+                            const startY = node.y + node.height / 2 - totalHeight / 2;
+                            let newY = startY;
+
+                            for (const content of split_content_array) {
+                                let newId = this.generateRandomId(16);
+
+                                try {
+                                    const newNodeTemp = await this.addNodeToCanvas(canvas, newId, {
+                                        x: newX,
+                                        y: newY,
+                                        width: node.width,
+                                        height: 300,
+                                        type: "text",
+                                        content: content,
+                                    });
+                                    const newNode = canvas.nodes?.get(newNodeTemp?.id!);
+                                    canvas.requestFrame();
+                                } catch (error) {
+                                    console.error("Failed to add node to canvas:", error);
+                                    new Notice("Failed to create node");
+                                }
+                                newY += 350;
+                            }
+                        },
+                    });
+                }
+
+                let submenuEl = createSubmenu(submenuConfigs);
+
+                // Append the submenu to the main button
+                graphButtonEl.appendChild(submenuEl);
                 submenuVisible = !submenuVisible;
                 if (submenuVisible) {
                     submenuEl.classList.add("visible");
@@ -1511,6 +1623,7 @@ version: 1
             menuEl.appendChild(graphButtonEl);
         }
     }
+
     getAllAncestorNodes(nodes: Node[], edges: Edge[], nodeId: string): Node[] {
         let ancestors: Node[] = [];
         let queue: string[] = [nodeId];
@@ -1771,7 +1884,10 @@ version: 1
             model: "default",
             provider: "default",
             temperature: 1,
-        }
+        },
+        iterations: number = 1,
+        xOffset: number = 200,
+        yOffset: number = 0
     ) {
         let local_system_prompt = system_prompt;
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
@@ -1934,30 +2050,38 @@ version: 1
         const { model, provider, temperature } = this.mergeSettingsAndSparkleConfig(sparkle_config);
 
         const node_content = ``;
-        const x = node.x + node.width + 200;
-        const new_node = await this.createChildNode(canvas, node, x, node.y, node_content, "right", "left");
-        if (!new_node) {
-            throw new Error("Invalid new node");
-        }
-        const new_node_id = new_node.id;
-        if (!new_node_id) {
-            throw new Error("Invalid node id");
-        }
-        const new_canvas_node = await this.get_node_by_id(canvas, new_node_id);
+        let x = node.x + node.width + xOffset;
+        let y = node.y + yOffset;
 
-        if (!new_canvas_node.unknownData.hasOwnProperty("role")) {
-            new_canvas_node.unknownData.role = "";
-            new_canvas_node.unknownData.displayOverride = false;
-        }
-        new_canvas_node.unknownData.role = "assistant";
+        for (let i = 0; i < iterations; i++) {
+            const new_node = await this.createChildNode(canvas, node, x, y, node_content, "right", "left");
+            if (!new_node) {
+                throw new Error("Invalid new node");
+            }
+            const new_node_id = new_node.id;
+            if (!new_node_id) {
+                throw new Error("Invalid node id");
+            }
+            const new_canvas_node = await this.get_node_by_id(canvas, new_node_id);
 
-        if (this.settings.llm_provider_options[provider][model].streaming) {
-            const stream = await this.llm_call_streaming(provider, model, conversation, temperature);
-            await this.update_node_content(new_node_id, stream, provider);
-            return new_node;
-        } else {
-            const content = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
-            new_node.setText(content);
+            if (!new_canvas_node.unknownData.hasOwnProperty("role")) {
+                new_canvas_node.unknownData.role = "";
+                new_canvas_node.unknownData.displayOverride = false;
+            }
+            new_canvas_node.unknownData.role = "assistant";
+
+            if (this.settings.llm_provider_options[provider][model].streaming) {
+                const stream = await this.llm_call_streaming(provider, model, conversation, temperature);
+                new_canvas_node.text = "";
+                await this.update_node_content(new_node_id, stream, provider);
+                if (iterations <= 1) {
+                }
+            } else {
+                const content = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
+                new_canvas_node.text = content;
+            }
+
+            y += yOffset + node.height;
         }
     }
 
@@ -2389,7 +2513,7 @@ version: 1
         if (!menuEl.querySelector(".spark_button")) {
             const buttonEl = createEl("button", "clickable-icon spark_button");
             setTooltip(buttonEl, "Sparkle", { placement: "top" });
-            setIcon(buttonEl, "lucide-sparkles");
+            setIcon(buttonEl, "lucide-sparkle");
             buttonEl.addEventListener("click", async () => {
                 const canvasView = this.app.workspace.getMostRecentLeaf()?.view;
                 // @ts-ignore
@@ -2550,3 +2674,7 @@ version: 1
         await this.saveData(this.settings);
     }
 }
+
+
+
+
