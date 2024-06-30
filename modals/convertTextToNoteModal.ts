@@ -16,7 +16,7 @@ export class ConvertTextToNoteModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
 
-        contentEl.createEl("h2", { text: "Convert Text to Note" });
+        contentEl.createEl("h2", { text: "Convert text to note" });
         contentEl.createEl("div", { text: `Converting ${this.messages.length} messages`, cls: "callout" });
 
         new Setting(contentEl)

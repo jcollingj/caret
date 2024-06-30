@@ -21,7 +21,7 @@ export class CustomModelModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
 
-        contentEl.createEl("h2", { text: "Add Custom Model" });
+        contentEl.createEl("h2", { text: "Add custom model" });
         contentEl.createEl("div", { text: "Note: The model needs to support the OpenAI spec.", cls: "callout" });
         contentEl.createEl("div", {
             text: "Note: The endpoint needs to support CORS. This is experimental and might require additional CORS settings to be added to Caret. Let me know!",
@@ -38,7 +38,7 @@ export class CustomModelModal extends Modal {
             });
 
         new Setting(contentEl)
-            .setName("Model Name")
+            .setName("Model name")
             .setDesc("This is the human-friendly name only used for displaying.")
             .addText((text) => {
                 text.setValue(this.model_name).onChange((value) => {
@@ -55,7 +55,7 @@ export class CustomModelModal extends Modal {
                 });
             });
         new Setting(contentEl)
-            .setName("Function Calling")
+            .setName("Function calling")
             .setDesc("Does the model support function calling?")
             .addToggle((toggle) => {
                 toggle.setValue(this.function_calling).onChange((value) => {
@@ -64,7 +64,7 @@ export class CustomModelModal extends Modal {
             });
 
         new Setting(contentEl)
-            .setName("Context Size")
+            .setName("Context size")
             .setDesc("You can normally pull this out of the Hugging Face repo, the config.json.")
             .addText((text) => {
                 text.setValue(this.context_window.toString()).onChange((value) => {
@@ -73,7 +73,7 @@ export class CustomModelModal extends Modal {
             });
 
         new Setting(contentEl)
-            .setName("Custom Endpoint")
+            .setName("Custom endpoint")
             .setDesc("This is where the model is located. It can be a remote URL or a server URL running locally.")
             .addText((text) => {
                 text.setValue(this.url).onChange((value) => {
@@ -82,7 +82,7 @@ export class CustomModelModal extends Modal {
             });
 
         new Setting(contentEl)
-            .setName("API Key")
+            .setName("API key")
             .setDesc("This is the API key required to access the model.")
             .addText((text) => {
                 text.setValue(this.api_key).onChange((value) => {
@@ -91,7 +91,7 @@ export class CustomModelModal extends Modal {
             });
 
         new Setting(contentEl)
-            .setName("Known Provider")
+            .setName("Known provider")
             .setDesc("Select this if it's a known endpoint like Ollama.")
             .addDropdown((dropdown) => {
                 dropdown.addOption("ollama", "Ollama");

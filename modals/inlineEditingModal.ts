@@ -34,7 +34,7 @@ export class CMDJModal extends Modal {
         new Setting(buttonContainer)
             .addButton((btn) =>
                 btn
-                    .setButtonText("Append Output")
+                    .setButtonText("Append output")
 
                     .onClick(async () => {
                         this.result = textArea.value; // Capture the value from the textarea

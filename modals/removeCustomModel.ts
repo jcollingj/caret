@@ -11,7 +11,7 @@ export class RemoveCustomModelModal extends Modal {
     onOpen() {
         const { contentEl, modalEl } = this;
         contentEl.empty();
-        contentEl.createEl("h2", { text: "Remove Custom Model", cls: "insert-file-header" });
+        contentEl.createEl("h2", { text: "Remove custom model", cls: "insert-file-header" });
 
         // Set the width of the modal
         modalEl.classList.add("custom-model-modal-container"); // Apply the CSS class here

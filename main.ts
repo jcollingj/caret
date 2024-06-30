@@ -17,7 +17,17 @@ const pdf_worker_url = URL.createObjectURL(pdf_worker_blob);
 pdfjs.GlobalWorkerOptions.workerSrc = pdf_worker_url;
 
 import { Canvas, ViewportNode, Message, Node, Edge, SparkleConfig } from "./types";
-import { MarkdownView, Modal, Notice, Plugin, setTooltip, setIcon, requestUrl, editorEditorField } from "obsidian";
+import {
+    MarkdownView,
+    Modal,
+    Notice,
+    Plugin,
+    setTooltip,
+    setIcon,
+    requestUrl,
+    editorEditorField,
+    addIcon,
+} from "obsidian";
 import { CanvasFileData, CanvasNodeData, CanvasTextData } from "obsidian/canvas";
 
 // Import all of the views, components, models, etc
@@ -105,6 +115,13 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
             },
         },
         anthropic: {
+            "claude-3-5-sonnet-20240620": {
+                name: "Claude 3.5 Sonnet",
+                context_window: 200000,
+                function_calling: true,
+                vision: true,
+                streaming: false,
+            },
             "claude-3-opus-20240229": {
                 name: "Claude 3 Opus",
                 context_window: 200000,
@@ -116,9 +133,10 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
                 name: "Claude 3 Sonnet",
                 context_window: 200000,
                 function_calling: true,
-                vision: false,
+                vision: true,
                 streaming: false,
             },
+
             "claude-3-haiku-20240307": {
                 name: "Claude 3 Haiku",
                 context_window: 200000,
@@ -137,6 +155,13 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
             },
             "anthropic/claude-3-sonnet": {
                 name: "Claude 3 Sonnet",
+                context_window: 200000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "anthropic/claude-3.5-sonnet": {
+                name: "Claude 3.5 Sonnet",
                 context_window: 200000,
                 function_calling: true,
                 vision: true,
@@ -218,6 +243,12 @@ export default class CaretPlugin extends Plugin {
     encoder: any;
 
     async onload() {
+        // Initalize extra icons
+        // addIcon("circle", `<circle cx="50" cy="50" r="50" fill="currentColor" />`);
+        addIcon(
+            "lucide-user-x",
+            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user-x"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" x2="22" y1="8" y2="13"/><line x1="22" x2="17" y1="8" y2="13"/></svg>'
+        );
         // Set up the encoder (gpt-4 is just used for everything as a short term solution)
         this.encoder = encodingForModel("gpt-4-0125-preview");
         // Load settings
@@ -248,7 +279,7 @@ export default class CaretPlugin extends Plugin {
         // Add Commands.
         this.addCommand({
             id: "add-custom-models",
-            name: "Add Custom Models",
+            name: "Add custom models",
             callback: () => {
                 new CustomModelModal(this.app, this).open();
             },
@@ -256,21 +287,21 @@ export default class CaretPlugin extends Plugin {
 
         this.addCommand({
             id: "remove-custom-models",
-            name: "Remove Custom Models",
+            name: "Remove custom models",
             callback: () => {
                 new RemoveCustomModelModal(this.app, this).open();
             },
         });
         this.addCommand({
             id: "set-system-prompt",
-            name: "Set System Prompt",
+            name: "Set system prompt",
             callback: () => {
                 new SystemPromptModal(this.app, this).open();
             },
         });
         this.addCommand({
             id: "create-new-workflow",
-            name: "Create New Workflow",
+            name: "Create new workflow",
             callback: () => {
                 const leaf = this.app.workspace.getLeaf(true);
                 const linearWorkflowEditor = new LinearWorkflowEditor(this, leaf);
@@ -280,148 +311,156 @@ export default class CaretPlugin extends Plugin {
         });
         this.addCommand({
             id: "create-linear-workflow",
-            name: "Create Linear Workflow From Canvas",
-            callback: async () => {
+            name: "Create linear workflow from canvas",
+            checkCallback: (checking: boolean) => {
                 const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
+                let on_canvas = false;
+                console.log({ canvas_view });
+
                 // @ts-ignore
-                if (!canvas_view?.canvas) {
-                    return;
+                if (canvas_view?.canvas) {
+                    on_canvas = true;
                 }
+                console.log({ on_canvas });
                 // @ts-ignore TODO: Type this better
-                const canvas = canvas_view.canvas;
+                if (on_canvas) {
+                    console.log("Does this execute?");
+                    if (!checking) {
+                        const canvas = canvas_view.canvas;
 
-                const selection = canvas.selection;
+                        const selection = canvas.selection;
 
-                const selected_ids = [];
-                const selection_iterator = selection.values();
-                for (const node of selection_iterator) {
-                    selected_ids.push(node.id);
-                }
-
-                const canvas_data = canvas.getData();
-                const { nodes, edges } = canvas;
-
-                // Filter nodes and edges based on selected IDs
-                const selected_nodes = [];
-                for (const node of nodes.values()) {
-                    if (selected_ids.includes(node.id)) {
-                        selected_nodes.push(node);
-                    }
-                }
-
-                const selected_edges = [];
-                for (const edge of edges.values()) {
-                    // if (selected_ids.includes(edge.from.node.id) && selected_ids.includes(edge.to.node.id)) {
-                    if (selected_ids.includes(edge.to.node.id)) {
-                        selected_edges.push(edge);
-                    }
-                }
-                const linear_graph = [];
-                for (let i = 0; i < selected_edges.length; i++) {
-                    const edge = selected_edges[i];
-                    const from_node = edge.from.node.id;
-                    const to_node = edge.to.node.id;
-                    const node_text = linear_graph.push({ from_node, to_node });
-                }
-                const from_nodes = new Set(linear_graph.map((edge) => edge.from_node));
-                const to_nodes = new Set(linear_graph.map((edge) => edge.to_node));
-
-                let ultimate_ancestor = null;
-                let ultimate_child = null;
-
-                // Find the ultimate ancestor (a from_node that is not a to_node)
-                for (const from_node of from_nodes) {
-                    if (!to_nodes.has(from_node)) {
-                        ultimate_ancestor = from_node;
-                        break;
-                    }
-                }
-
-                // Find the ultimate child (a to_node that is not a from_node)
-                for (const to_node of to_nodes) {
-                    if (!from_nodes.has(to_node)) {
-                        ultimate_child = to_node;
-                        break;
-                    }
-                }
-                // Create a map for quick lookup of edges by from_node
-                const edge_map = new Map();
-                for (const edge of linear_graph) {
-                    if (!edge_map.has(edge.from_node)) {
-                        edge_map.set(edge.from_node, []);
-                    }
-                    edge_map.get(edge.from_node).push(edge);
-                }
-
-                // Initialize the sorted graph with the ultimate ancestor
-                const sorted_graph = [];
-                let current_node = ultimate_ancestor;
-
-                // Traverse the graph starting from the ultimate ancestor
-                while (current_node !== ultimate_child) {
-                    const edges_from_current = edge_map.get(current_node);
-                    if (edges_from_current && edges_from_current.length > 0) {
-                        const next_edge = edges_from_current[0]; // Assuming there's only one edge from each node
-                        sorted_graph.push(next_edge);
-                        current_node = next_edge.to_node;
-                    } else {
-                        break; // No further edges, break the loop
-                    }
-                }
-
-                // Add the ultimate child as the last node
-                sorted_graph.push({ from_node: current_node, to_node: ultimate_child });
-                // Create a list to hold the ordered node IDs
-                const ordered_node_ids = [];
-
-                // Add the ultimate ancestor as the starting node
-                ordered_node_ids.push(ultimate_ancestor);
-
-                // Traverse the sorted graph to collect node IDs in order
-                for (const edge of sorted_graph) {
-                    if (
-                        edge.to_node !== ultimate_child ||
-                        ordered_node_ids[ordered_node_ids.length - 1] !== ultimate_child
-                    ) {
-                        ordered_node_ids.push(edge.to_node);
-                    }
-                }
-
-                // Initialize a new list to hold the prompts
-                const prompts = [];
-
-                // Iterate over the ordered node IDs
-                for (const node_id of ordered_node_ids) {
-                    // Find the corresponding node in selected_nodes
-                    const node = selected_nodes.find((n) => n.id === node_id);
-                    if (node) {
-                        // Get the node context
-                        const context = node.text;
-                        // Check if the context starts with "user"
-                        if (context.startsWith("<role>user</role>")) {
-                            // Add the context to the prompts list
-                            prompts.push(context.replace("<role>user</role>", "").trim());
+                        const selected_ids = [];
+                        const selection_iterator = selection.values();
+                        for (const node of selection_iterator) {
+                            selected_ids.push(node.id);
                         }
-                    }
-                }
 
-                const chat_folder_path = "caret/workflows";
-                const chat_folder = this.app.vault.getAbstractFileByPath(chat_folder_path);
-                if (!chat_folder) {
-                    await this.app.vault.createFolder(chat_folder_path);
-                }
+                        const canvas_data = canvas.getData();
+                        const { nodes, edges } = canvas;
 
-                let prompts_string = ``;
-                for (let i = 0; i < prompts.length; i++) {
-                    const escaped_content = this.escapeXml(prompts[i]);
-                    prompts_string += `
+                        // Filter nodes and edges based on selected IDs
+                        const selected_nodes = [];
+                        for (const node of nodes.values()) {
+                            if (selected_ids.includes(node.id)) {
+                                selected_nodes.push(node);
+                            }
+                        }
+
+                        const selected_edges = [];
+                        for (const edge of edges.values()) {
+                            // if (selected_ids.includes(edge.from.node.id) && selected_ids.includes(edge.to.node.id)) {
+                            if (selected_ids.includes(edge.to.node.id)) {
+                                selected_edges.push(edge);
+                            }
+                        }
+                        const linear_graph = [];
+                        for (let i = 0; i < selected_edges.length; i++) {
+                            const edge = selected_edges[i];
+                            const from_node = edge.from.node.id;
+                            const to_node = edge.to.node.id;
+                            const node_text = linear_graph.push({ from_node, to_node });
+                        }
+                        const from_nodes = new Set(linear_graph.map((edge) => edge.from_node));
+                        const to_nodes = new Set(linear_graph.map((edge) => edge.to_node));
+
+                        let ultimate_ancestor = null;
+                        let ultimate_child = null;
+
+                        // Find the ultimate ancestor (a from_node that is not a to_node)
+                        for (const from_node of from_nodes) {
+                            if (!to_nodes.has(from_node)) {
+                                ultimate_ancestor = from_node;
+                                break;
+                            }
+                        }
+
+                        // Find the ultimate child (a to_node that is not a from_node)
+                        for (const to_node of to_nodes) {
+                            if (!from_nodes.has(to_node)) {
+                                ultimate_child = to_node;
+                                break;
+                            }
+                        }
+                        // Create a map for quick lookup of edges by from_node
+                        const edge_map = new Map();
+                        for (const edge of linear_graph) {
+                            if (!edge_map.has(edge.from_node)) {
+                                edge_map.set(edge.from_node, []);
+                            }
+                            edge_map.get(edge.from_node).push(edge);
+                        }
+
+                        // Initialize the sorted graph with the ultimate ancestor
+                        const sorted_graph = [];
+                        let current_node = ultimate_ancestor;
+
+                        // Traverse the graph starting from the ultimate ancestor
+                        while (current_node !== ultimate_child) {
+                            const edges_from_current = edge_map.get(current_node);
+                            if (edges_from_current && edges_from_current.length > 0) {
+                                const next_edge = edges_from_current[0]; // Assuming there's only one edge from each node
+                                sorted_graph.push(next_edge);
+                                current_node = next_edge.to_node;
+                            } else {
+                                break; // No further edges, break the loop
+                            }
+                        }
+
+                        // Add the ultimate child as the last node
+                        sorted_graph.push({ from_node: current_node, to_node: ultimate_child });
+                        // Create a list to hold the ordered node IDs
+                        const ordered_node_ids = [];
+
+                        // Add the ultimate ancestor as the starting node
+                        ordered_node_ids.push(ultimate_ancestor);
+
+                        // Traverse the sorted graph to collect node IDs in order
+                        for (const edge of sorted_graph) {
+                            if (
+                                edge.to_node !== ultimate_child ||
+                                ordered_node_ids[ordered_node_ids.length - 1] !== ultimate_child
+                            ) {
+                                ordered_node_ids.push(edge.to_node);
+                            }
+                        }
+
+                        // Initialize a new list to hold the prompts
+                        const prompts = [];
+                        console.log({ ordered_node_ids });
+
+                        // Iterate over the ordered node IDs
+                        for (const node_id of ordered_node_ids) {
+                            // Find the corresponding node in selected_nodes
+                            const node = selected_nodes.find((n) => n.id === node_id);
+                            if (node) {
+                                // Get the node context
+                                const context = node.text;
+                                // Check if the context starts with "user"
+                                if (node.unknownData.role === "user") {
+                                    // Add the context to the prompts list
+                                    prompts.push(context.replace("<role>user</role>", "").trim());
+                                }
+                            }
+                        }
+
+                        const chat_folder_path = "caret/workflows";
+                        const chat_folder = this.app.vault.getAbstractFileByPath(chat_folder_path);
+                        if (!chat_folder) {
+                            this.app.vault.createFolder(chat_folder_path);
+                        }
+
+                        let prompts_string = ``;
+                        for (let i = 0; i < prompts.length; i++) {
+                            const escaped_content = this.escapeXml(prompts[i]);
+                            prompts_string += `
 
 <prompt model="${this.settings.model}" provider="${this.settings.llm_provider}" delay="0" temperature="1">
 ${escaped_content}
 </prompt>`.trim();
-                }
+                        }
 
-                let file_content = `
+                        let file_content = `
 ---
 caret_prompt: linear
 version: 1
@@ -435,271 +474,272 @@ version: 1
 \`\`\`
 `.trim();
 
-                let base_file_name = prompts[0]
-                    .split(" ")
-                    .slice(0, 10)
-                    .join(" ")
-                    .substring(0, 20)
-                    .replace(/[^a-zA-Z0-9]/g, "_");
-                let file_name = `${base_file_name}.md`;
-                let file_path = `${chat_folder_path}/${file_name}`;
-                let file = await this.app.vault.getFileByPath(file_path);
-                let counter = 1;
+                        console.log({ prompts });
+                        let base_file_name = prompts[0]
+                            .split(" ")
+                            .slice(0, 10)
+                            .join(" ")
+                            .substring(0, 20)
+                            .replace(/[^a-zA-Z0-9]/g, "_");
+                        let file_name = `${base_file_name}.md`;
+                        let file_path = `${chat_folder_path}/${file_name}`;
+                        let file;
+                        let counter = 1;
+                        console.log({ file_path });
 
-                while (file) {
-                    file_name = `${base_file_name}_${counter}.md`;
-                    file_path = `${chat_folder_path}/${file_name}`;
-                    file = await this.app.vault.getFileByPath(file_path);
-                    counter++;
-                }
+                        // Check if the file already exists and iterate until we find a new name
+                        while (this.app.vault.getFileByPath(file_path)) {
+                            file_name = `${base_file_name}_${counter}.md`;
+                            file_path = `${chat_folder_path}/${file_name}`;
+                            counter++;
+                        }
 
-                try {
-                    if (file) {
-                        await this.app.vault.modify(file, file_content);
-                    } else {
-                        await this.app.vault.create(file_path, file_content);
+                        this.app.vault.create(file_path, file_content).then(() => {
+                            const leaf = this.app.workspace.getLeaf(true);
+                            const linearWorkflowEditor = new LinearWorkflowEditor(this, leaf, file_path);
+                            leaf.open(linearWorkflowEditor);
+                            this.app.workspace.revealLeaf(leaf);
+                        });
                     }
-                    // new Notice("Workflow saved!");
-                    const leaf = this.app.workspace.getLeaf(true);
-                    const linearWorkflowEditor = new LinearWorkflowEditor(this, leaf, file_path);
-                    leaf.open(linearWorkflowEditor);
-                    this.app.workspace.revealLeaf(leaf);
-                } catch (error) {
-                    console.error("Failed to save chat:", error);
+                    return true;
                 }
-            },
-        });
-
-        this.addCommand({
-            id: "insert-note",
-            name: "Insert Note",
-            callback: async () => {
-                const currentLeaf = this.app.workspace.activeLeaf;
-                if (!currentLeaf) {
-                    new Notice("No active leaf");
-                    return;
-                }
-                const view = currentLeaf.view;
-                const view_type = view.getViewType();
-                if (view_type !== "main-caret") {
-                    new Notice("This command only works in a chat window");
-                    return;
-                }
-
-                // new InsertNoteModal(this.app, this, view).open();
-                new InsertNoteModal(this.app, this, (note: string) => {}).open();
+                console.log("Executing here");
+                return false;
             },
         });
 
         this.addCommand({
             id: "canvas-prompt",
-            name: "Canvas Prompt",
-            callback: async () => {
-                const currentLeaf = this.app.workspace.activeLeaf;
-                if (currentLeaf?.view.getViewType() === "canvas") {
-                    const canvasView = currentLeaf.view;
-                    const canvas = (canvasView as any).canvas;
-                    const selection = canvas.selection;
+            name: "Canvas prompt",
+            checkCallback: (checking: boolean) => {
+                const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
+                let on_canvas = false;
+                // @ts-ignore
+                if (canvas_view?.canvas) {
+                    on_canvas = true;
+                }
+                // @ts-ignore TODO: Type this better
+                if (on_canvas) {
+                    if (!checking) {
+                        (async () => {
+                            const canvas = canvas_view.canvas;
+                            const selection = canvas.selection;
 
-                    let average_x = 0;
-                    let average_y = 0;
-                    let average_height = 0;
-                    let average_width = 0;
+                            let average_x = 0;
+                            let average_y = 0;
+                            let average_height = 0;
+                            let average_width = 0;
 
-                    let total_x = 0;
-                    let total_y = 0;
-                    let count = 0;
-                    let total_height = 0;
-                    let total_width = 0;
-                    let all_text = "";
+                            let total_x = 0;
+                            let total_y = 0;
+                            let count = 0;
+                            let total_height = 0;
+                            let total_width = 0;
+                            let all_text = "";
 
-                    let convo_total_tokens = 0;
+                            let convo_total_tokens = 0;
 
-                    const context_window = this.settings.context_window;
+                            const context_window = this.settings.context_window;
 
-                    for (const obj of selection) {
-                        const { x, y, height, width } = obj;
-                        total_x += x;
-                        total_y += y;
-                        total_height += height;
-                        total_width += width;
-                        count++;
-                        if ("text" in obj) {
-                            const { text } = obj;
-                            const text_token_length = this.encoder.encode(text).length;
-                            if (convo_total_tokens + text_token_length < context_window) {
-                                all_text += text + "\n";
-                                convo_total_tokens += text_token_length;
-                            } else {
-                                new Notice("Context window exceeded - This is the message?");
-                                break;
-                            }
-                        } else if ("filePath" in obj) {
-                            let { filePath } = obj;
-                            const file = await this.app.vault.getFileByPath(filePath);
-                            if (!file) {
-                                console.error("Not a file at this file path");
-                                continue;
-                            }
-                            if (file.extension === "pdf") {
-                                const text = await this.extractTextFromPDF(file.name);
-                                const text_token_length = this.encoder.encode(text).length;
-                                if (convo_total_tokens + text_token_length > context_window) {
-                                    new Notice("Context window exceeded");
-                                    break;
-                                }
-                                const file_text = `PDF Title: ${file.name}`;
-                                all_text += `${file_text} \n ${text}`;
-                                convo_total_tokens += text_token_length;
-                            } else if (file?.extension === "md") {
-                                const text = await this.app.vault.read(file);
-                                const text_token_length = this.encoder.encode(text).length;
-                                if (convo_total_tokens + text_token_length > context_window) {
-                                    new Notice("Context window exceeded");
-                                    break;
-                                }
-                                const file_text = `
+                            for (const obj of selection) {
+                                const { x, y, height, width } = obj;
+                                total_x += x;
+                                total_y += y;
+                                total_height += height;
+                                total_width += width;
+                                count++;
+                                if ("text" in obj) {
+                                    const { text } = obj;
+                                    const text_token_length = this.encoder.encode(text).length;
+                                    if (convo_total_tokens + text_token_length < context_window) {
+                                        all_text += text + "\n";
+                                        convo_total_tokens += text_token_length;
+                                    } else {
+                                        new Notice("Context window exceeded - This is the message?");
+                                        break;
+                                    }
+                                } else if ("filePath" in obj) {
+                                    let { filePath } = obj;
+                                    const file = await this.app.vault.getFileByPath(filePath);
+                                    if (!file) {
+                                        console.error("Not a file at this file path");
+                                        continue;
+                                    }
+                                    if (file.extension === "pdf") {
+                                        const text = await this.extractTextFromPDF(file.name);
+                                        const text_token_length = this.encoder.encode(text).length;
+                                        if (convo_total_tokens + text_token_length > context_window) {
+                                            new Notice("Context window exceeded");
+                                            break;
+                                        }
+                                        const file_text = `PDF Title: ${file.name}`;
+                                        all_text += `${file_text} \n ${text}`;
+                                        convo_total_tokens += text_token_length;
+                                    } else if (file?.extension === "md") {
+                                        const text = await this.app.vault.read(file);
+                                        const text_token_length = this.encoder.encode(text).length;
+                                        if (convo_total_tokens + text_token_length > context_window) {
+                                            new Notice("Context window exceeded");
+                                            break;
+                                        }
+                                        const file_text = `
                                 Title: ${filePath.replace(".md", "")}
                                 ${text}
                                 `.trim();
-                                all_text += file_text;
-                                convo_total_tokens += text_token_length;
+                                        all_text += file_text;
+                                        convo_total_tokens += text_token_length;
+                                    }
+                                }
                             }
-                        }
-                    }
 
-                    average_x = count > 0 ? total_x / count : 0;
-                    average_y = count > 0 ? total_y / count : 0;
-                    average_height = count > 0 ? Math.max(200, total_height / count) : 200;
-                    average_width = count > 0 ? Math.max(200, total_width / count) : 200;
+                            average_x = count > 0 ? total_x / count : 0;
+                            average_y = count > 0 ? total_y / count : 0;
+                            average_height = count > 0 ? Math.max(200, total_height / count) : 200;
+                            average_width = count > 0 ? Math.max(200, total_width / count) : 200;
 
-                    // This handles the model ---
-                    // Create a modal with a text input and a submit button
-                    const modal = new Modal(this.app);
-                    modal.contentEl.createEl("h1", { text: "Canvas Prompt" });
-                    const container = modal.contentEl.createDiv({ cls: "flex-col" });
-                    const text_area = container.createEl("textarea", {
-                        placeholder: "",
-                        cls: "w-full mb-2",
-                    });
-                    const submit_button = container.createEl("button", { text: "Submit" });
-                    submit_button.onclick = async () => {
-                        modal.close();
-                        const prompt = `
+                            // This handles the model ---
+                            // Create a modal with a text input and a submit button
+                            const modal = new Modal(this.app);
+                            modal.contentEl.createEl("h1", { text: "Canvas Prompt" });
+                            const container = modal.contentEl.createDiv({ cls: "flex-col" });
+                            const text_area = container.createEl("textarea", {
+                                placeholder: "",
+                                cls: "w-full mb-2",
+                            });
+                            const submit_button = container.createEl("button", { text: "Submit" });
+                            submit_button.onclick = async () => {
+                                modal.close();
+                                const prompt = `
                         Please do the following:
                         ${text_area.value}
 
                         Given this content:
                         ${all_text}
                         `;
-                        const conversation: Message[] = [{ role: "user", content: prompt }];
-                        // Create the text node on the canvas
-                        const text_node_config = {
-                            pos: { x: average_x + 50, y: average_y }, // Position on the canvas
-                            size: { width: average_width, height: average_height }, // Size of the text box
-                            position: "center", // This might relate to text alignment
-                            text: "", // Text content from input
-                            save: true, // Save this node's state
-                            focus: true, // Focus and start editing immediately
-                        };
-                        const node = canvas.createTextNode(text_node_config);
-                        const node_id = node.id;
+                                const conversation: Message[] = [{ role: "user", content: prompt }];
+                                // Create the text node on the canvas
+                                const text_node_config = {
+                                    pos: { x: average_x + 50, y: average_y }, // Position on the canvas
+                                    size: { width: average_width, height: average_height }, // Size of the text box
+                                    position: "center", // This might relate to text alignment
+                                    text: "", // Text content from input
+                                    save: true, // Save this node's state
+                                    focus: true, // Focus and start editing immediately
+                                };
+                                const node = canvas.createTextNode(text_node_config);
+                                const node_id = node.id;
 
-                        if (
-                            this.settings.llm_provider_options[this.settings.llm_provider][this.settings.model]
-                                .streaming
-                        ) {
-                            const stream: Message = await this.llm_call_streaming(
-                                this.settings.llm_provider,
-                                this.settings.model,
-                                conversation,
-                                1
-                            );
+                                if (
+                                    this.settings.llm_provider_options[this.settings.llm_provider][this.settings.model]
+                                        .streaming
+                                ) {
+                                    const stream: Message = await this.llm_call_streaming(
+                                        this.settings.llm_provider,
+                                        this.settings.model,
+                                        conversation,
+                                        1
+                                    );
 
-                            await this.update_node_content(node_id, stream, this.settings.llm_provider);
-                        } else {
-                            const content = await this.llm_call(
-                                this.settings.llm_provider,
-                                this.settings.model,
-                                conversation
-                            );
-                            node.setText(content);
-                        }
-                    };
-                    modal.open();
+                                    await this.update_node_content(node_id, stream, this.settings.llm_provider);
+                                } else {
+                                    const content = await this.llm_call(
+                                        this.settings.llm_provider,
+                                        this.settings.model,
+                                        conversation
+                                    );
+                                    node.setText(content);
+                                }
+                            };
+                            console.log({ all_text });
+                            modal.open();
+                        })();
+                    }
+
+                    return true;
                 }
+                return false;
             },
         });
 
         this.addCommand({
             id: "inline-editing",
-            name: "Inline Editing",
-            callback: () => {
+            name: "Inline editing",
+            checkCallback: (checking: boolean) => {
                 const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
                 if (activeView && activeView.editor) {
                     const selectedText = activeView.editor.getSelection();
-                    const content = activeView.editor.getValue();
-                    const startIndex = content.indexOf(selectedText);
-                    const endIndex = startIndex + selectedText.length;
-                    new CMDJModal(this.app, selectedText, startIndex, endIndex, this).open();
-                } else {
-                    new Notice("No active markdown editor or no text selected.");
+                    if (selectedText) {
+                        if (!checking) {
+                            const content = activeView.editor.getValue();
+                            const startIndex = content.indexOf(selectedText);
+                            const endIndex = startIndex + selectedText.length;
+                            new CMDJModal(this.app, selectedText, startIndex, endIndex, this).open();
+                        }
+                        return true;
+                    }
                 }
+                return false;
             },
         });
 
         this.addCommand({
             id: "edit-workflow",
-            name: "Edit Workflow",
-            callback: async () => {
+            name: "Edit workflow",
+            checkCallback: (checking: boolean) => {
                 const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
                 if (editor) {
-                    const current_file = this.app.workspace.getActiveFile();
-                    const front_matter = await this.getFrontmatter(current_file);
+                    if (!checking) {
+                        (async () => {
+                            const current_file = this.app.workspace.getActiveFile();
+                            const front_matter = await this.getFrontmatter(current_file);
 
-                    if (front_matter.caret_prompt !== "linear") {
-                        new Notice("Not a linear workflow");
+                            if (front_matter.caret_prompt !== "linear") {
+                                new Notice("Not a linear workflow");
+                                return;
+                            }
+                            const leaf = this.app.workspace.getLeaf(true);
+                            const linearWorkflowEditor = new LinearWorkflowEditor(this, leaf, current_file?.path);
+                            leaf.open(linearWorkflowEditor);
+                            this.app.workspace.revealLeaf(leaf);
+                        })();
                     }
-                    const leaf = this.app.workspace.getLeaf(true);
-                    const linearWorkflowEditor = new LinearWorkflowEditor(this, leaf, current_file?.path);
-                    leaf.open(linearWorkflowEditor);
-                    this.app.workspace.revealLeaf(leaf);
-                    return;
+                    return true;
                 }
+                return false;
             },
         });
 
         this.addCommand({
             id: "apply-inline-changes",
-            name: "Apply Inline Changes",
-            callback: () => {
+            name: "Apply inline changes",
+            checkCallback: (checking: boolean) => {
                 const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+
                 if (editor) {
-                    let content = editor.getValue();
-                    // Regex to find |-content-|
-                    const deleteRegex = /\|-(.*?)-\|/gs;
-                    // Regex to find |+content+|
+                    if (!checking) {
+                        let content = editor.getValue();
+                        // Regex to find |-content-|
+                        const deleteRegex = /\|-(.*?)-\|/gs;
 
-                    // Replace all instances of |-content-| with empty string
-                    content = content.replace(deleteRegex, "");
-                    // Replace all instances of |+content+| with empty string
-                    // @ts-ignore
-                    content = content.replaceAll("|+", "");
-                    // @ts-ignore
-                    content = content.replaceAll("+|", "");
+                        // Replace all instances of |-content-| with empty string
+                        content = content.replace(deleteRegex, "");
+                        // Replace all instances of |+content+| with empty string
+                        content = content.replace(/\|\+/g, "");
+                        content = content.replace(/\+\|/g, "");
 
-                    // Set the modified content back to the editor
-                    editor.setValue(content);
-                    new Notice("Dips applied successfully.");
-                } else {
-                    new Notice("No active markdown editor found.");
+                        // Set the modified content back to the editor
+                        editor.setValue(content);
+                        new Notice("Diffs applied successfully.");
+                    }
+                    return true;
                 }
+                return false;
             },
         });
 
         this.addCommand({
             id: "continue-chat",
-            name: "Continue Chat",
+            name: "Continue chat",
             callback: async () => {
                 const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
                 if (editor) {
@@ -744,7 +784,7 @@ version: 1
                                 if (active_file_name) {
                                     title_el.textContent = active_file_name;
                                 } else {
-                                    title_el.textContent = "Caret Chat";
+                                    title_el.textContent = "Caret chat";
                                 }
                             }
                         }
@@ -775,14 +815,10 @@ version: 1
         // This registers patching the canvas
         this.registerEvent(
             this.app.workspace.on("active-leaf-change", (event) => {
-                // TODO - Refactor this to use getActiveViewOfType
-                // Just not sure what the constructor for that is yet
-                const currentLeaf = this.app.workspace.activeLeaf;
-                if (currentLeaf) {
+                const currentFile = this.app.workspace.getActiveFile();
+                if (currentFile?.extension === "canvas") {
                     this.unhighlightLineage();
-                    if (currentLeaf?.view.getViewType() === "canvas") {
-                        this.patchCanvasMenu();
-                    }
+                    this.patchCanvasMenu();
                 }
             })
         );
@@ -1058,6 +1094,10 @@ version: 1
                                         customDisplayDiv.textContent = "👤";
                                     } else if (node.unknownData.role === "system") {
                                         customDisplayDiv.textContent = "🖥️";
+                                    } else if (node.unknownData.role === "cleared") {
+                                        customDisplayDiv.textContent = "";
+                                        customDisplayDiv.remove();
+                                        // customDisplayDiv.remove();
                                     }
                                 }
 
@@ -1484,9 +1524,20 @@ version: 1
                         },
                     },
                     {
+                        name: "Clear Role",
+                        // icon: "lucide-message-circle-off",
+                        icon: "lucide-user-x",
+                        tooltip: "Clears the nodes role",
+                        callback: () => {
+                            node.unknownData.role = "cleared";
+                            node.unknownData.displayOverride = false;
+                            canvas.requestFrame();
+                        },
+                    },
+                    {
                         name: "Refresh",
                         icon: "lucide-refresh-ccw",
-                        tooltip: "Refresh",
+                        tooltip: "Refresh the path up to this point",
                         callback: () => {
                             this.refreshNode(node.id, this.settings.system_prompt, {
                                 model: "default",
@@ -1497,8 +1548,8 @@ version: 1
                     },
                     {
                         name: "Double Sparkle",
-                        icon: "lucide-sparkles",
-                        tooltip: "Sparkle twice",
+                        icon: "lucide-sparkle",
+                        tooltip: "Runs Sparkle twice",
                         callback: async () => {
                             await canvas.requestSave(true);
                             const node_id = node.id;
@@ -1509,7 +1560,7 @@ version: 1
                     {
                         name: "Condense",
                         icon: "lucide-arrow-up-narrow-wide",
-                        tooltip: "Condense node",
+                        tooltip: "Condenses node text content",
                         callback: async () => {
                             await canvas.requestSave(true);
                             const content = node.text || node.unknownData.text;
@@ -2063,7 +2114,7 @@ version: 1
                 throw new Error("Invalid node id");
             }
             const new_canvas_node = await this.get_node_by_id(canvas, new_node_id);
-
+            new_canvas_node.initialize();
             if (!new_canvas_node.unknownData.hasOwnProperty("role")) {
                 new_canvas_node.unknownData.role = "";
                 new_canvas_node.unknownData.displayOverride = false;
@@ -2074,11 +2125,9 @@ version: 1
                 const stream = await this.llm_call_streaming(provider, model, conversation, temperature);
                 new_canvas_node.text = "";
                 await this.update_node_content(new_node_id, stream, provider);
-                if (iterations <= 1) {
-                }
             } else {
                 const content = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
-                new_canvas_node.text = content;
+                new_canvas_node.setText(content);
             }
 
             y += yOffset + node.height;
@@ -2318,7 +2367,7 @@ version: 1
 
                 const body = {
                     model: this.settings.model,
-                    max_tokens: 4096,
+                    max_tokens: 4095,
                     messages: conversation,
                     system: systemContent, // Set the system parameter
                 };
@@ -2340,6 +2389,7 @@ version: 1
             } catch (error) {
                 console.error("Error during Anthropic call:");
                 console.error(error);
+                console.error(error.type);
                 new Notice(`Error: ${error.message}`);
                 throw error;
             }
@@ -2513,7 +2563,7 @@ version: 1
         if (!menuEl.querySelector(".spark_button")) {
             const buttonEl = createEl("button", "clickable-icon spark_button");
             setTooltip(buttonEl, "Sparkle", { placement: "top" });
-            setIcon(buttonEl, "lucide-sparkle");
+            setIcon(buttonEl, "lucide-sparkles");
             buttonEl.addEventListener("click", async () => {
                 const canvasView = this.app.workspace.getMostRecentLeaf()?.view;
                 // @ts-ignore
@@ -2674,7 +2724,3 @@ version: 1
         await this.saveData(this.settings);
     }
 }
-
-
-
-

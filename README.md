@@ -57,7 +57,7 @@ Open Bounties:
   - Extend chat so it can work in the sidebar as well. Include features to quickly add selected text into the chat.
   - Payout: $100
 - **Canvas Cards Additional Actions**:
-  - Create additional actions that go in the "magic wand" menu. These actions should be things like: Split node into multiple nodes, 
+  - Create additional actions that go in the "magic wand" menu. These actions should be things like: Split node into multiple nodes, condensing 
   - Payout: $100
 - **Canvas UI Improvements Batch**:
   - Description: Expose more information to the user about what the canvas is currently doing.

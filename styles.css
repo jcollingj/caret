@@ -346,6 +346,7 @@
     grid-template-columns: repeat(4, 1fr); /* Up to four divs wide */
     gap: 5px; /* Add some space between the icons */
     padding: 2px; /* Add some padding around the grid */
+    z-index: 100000;
 }
 
 .submenu.visible {

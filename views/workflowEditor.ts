@@ -26,14 +26,14 @@ export class LinearWorkflowEditor extends ItemView {
     }
 
     getDisplayText() {
-        return "Workflow Editor";
+        return "Workflow editor";
     }
 
     async onOpen() {
         if (this.file_path) {
             const file = this.app.vault.getAbstractFileByPath(this.file_path);
             if (file) {
-                const front_matter = await this.plugin.get_frontmatter(file);
+                const front_matter = await this.plugin.getFrontmatter(file);
                 this.workflow_type = front_matter.caret_prompt;
                 let file_content;
                 if (file instanceof TFile) {
@@ -117,13 +117,13 @@ export class LinearWorkflowEditor extends ItemView {
         // Create a button to add new prompts
         const buttonContainer = container.createEl("div", { cls: "button-container bottom-screen-padding" });
 
-        const addPromptButton = buttonContainer.createEl("button", { text: "Add New Prompt" });
+        const addPromptButton = buttonContainer.createEl("button", { text: "Add new prompt" });
         addPromptButton.addEventListener("click", () => {
             this.add_prompt();
         });
 
         // Create a save workflow button
-        const save_button = buttonContainer.createEl("button", { text: "Save Workflow" });
+        const save_button = buttonContainer.createEl("button", { text: "Save workflow" });
         save_button.addEventListener("click", () => {
             if (this.workflow_name.length === 0) {
                 new Notice("Workflow must be named before saving");
@@ -210,10 +210,10 @@ ${prompts_string}
                     await this.app.vault.rename(file, file_path);
                 }
                 await this.app.vault.modify(file, file_content);
-                new Notice("Workflow Updated!");
+                new Notice("Workflow updated!");
             } else {
                 await this.app.vault.create(file_path, file_content);
-                new Notice("Workflow Created!");
+                new Notice("Workflow created!");
             }
         } catch (error) {
             console.error("Failed to save chat:", error);
@@ -231,15 +231,15 @@ ${prompts_string}
             cls: "dropdown-container",
         });
 
-        dropdown_container.createEl("label", { text: "Workflow Type: ", cls: "dropdown-label" });
+        dropdown_container.createEl("label", { text: "Workflow type: ", cls: "dropdown-label" });
 
         const workflow_type_select = dropdown_container.createEl("select", {
             cls: "workflow-type-select",
         });
 
         const options = [
-            { value: "linear", text: "Linear Workflow" },
-            { value: "parallel", text: "Parallel Workflow" },
+            { value: "linear", text: "Linear workflow" },
+            { value: "parallel", text: "Parallel workflow" },
         ];
 
         options.forEach((option) => {
