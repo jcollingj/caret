@@ -2,8 +2,8 @@
 import ollama from "ollama/browser";
 import { encodingForModel } from "js-tiktoken";
 // @ts-ignore
-import pdfjs from "@bundled-es-modules/pdfjs-dist/build/pdf";
-import pdf_worker_code from "./workers/pdf.worker.js";
+// import pdfjs from "@bundled-es-modules/pdfjs-dist/build/pdf";
+// import pdf_worker_code from "./workers/pdf.worker.js";
 
 import OpenAI from "openai";
 import Groq from "groq-sdk";
@@ -12,9 +12,9 @@ import { around } from "monkey-around";
 
 // Create a Blob URL from the worker code
 // @ts-ignore
-const pdf_worker_blob = new Blob([pdf_worker_code], { type: "application/javascript" });
-const pdf_worker_url = URL.createObjectURL(pdf_worker_blob);
-pdfjs.GlobalWorkerOptions.workerSrc = pdf_worker_url;
+// const pdf_worker_blob = new Blob([pdf_worker_code], { type: "application/javascript" });
+// const pdf_worker_url = URL.createObjectURL(pdf_worker_blob);
+// pdfjs.GlobalWorkerOptions.workerSrc = pdf_worker_url;
 
 import { Canvas, ViewportNode, Message, Node, Edge, SparkleConfig } from "./types";
 import {
@@ -27,6 +27,7 @@ import {
     requestUrl,
     editorEditorField,
     addIcon,
+    loadPdfJs,
 } from "obsidian";
 import { CanvasFileData, CanvasNodeData, CanvasTextData } from "obsidian/canvas";
 
@@ -241,6 +242,7 @@ export default class CaretPlugin extends Plugin {
     anthropic_client: Anthropic;
     openrouter_client: OpenAI;
     encoder: any;
+    pdfjs: any;
 
     async onload() {
         // Initalize extra icons
@@ -251,6 +253,7 @@ export default class CaretPlugin extends Plugin {
         );
         // Set up the encoder (gpt-4 is just used for everything as a short term solution)
         this.encoder = encodingForModel("gpt-4-0125-preview");
+        this.pdfjs = await loadPdfJs();
         // Load settings
         await this.loadSettings();
 
@@ -315,17 +318,15 @@ export default class CaretPlugin extends Plugin {
             checkCallback: (checking: boolean) => {
                 const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
                 let on_canvas = false;
-                console.log({ canvas_view });
 
                 // @ts-ignore
                 if (canvas_view?.canvas) {
                     on_canvas = true;
                 }
-                console.log({ on_canvas });
                 // @ts-ignore TODO: Type this better
                 if (on_canvas) {
-                    console.log("Does this execute?");
                     if (!checking) {
+                        // @ts-ignore
                         const canvas = canvas_view.canvas;
 
                         const selection = canvas.selection;
@@ -522,6 +523,7 @@ version: 1
                 if (on_canvas) {
                     if (!checking) {
                         (async () => {
+                            // @ts-ignore
                             const canvas = canvas_view.canvas;
                             const selection = canvas.selection;
 
@@ -1394,9 +1396,11 @@ version: 1
         const file_path = await this.app.vault.getResourcePath({
             path: file_name,
         });
+        const that = this;
+
         async function loadAndExtractText(file_path: string): Promise<string> {
             try {
-                const doc = await pdfjs.getDocument(file_path).promise;
+                const doc = await that.pdfjs.getDocument(file_path).promise;
                 const numPages = doc.numPages;
 
                 // Load metadata

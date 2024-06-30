@@ -15,7 +15,7 @@ const context = await esbuild.context({
 	banner: {
 		js: banner,
 	},
-	entryPoints: ["main.ts"], // Only include the main entry point
+	entryPoints: ["main.ts"],
 	bundle: true,
 	external: [
 		"obsidian",
@@ -37,11 +37,7 @@ const context = await esbuild.context({
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,
-	outfile: "main.js", // Single output file
-	loader: {
-		'.js': 'js', // Ensure .js files are treated as JavaScript
-		'.worker.js': 'text', // Treat worker files as text
-	},
+	outfile: "main.js",
 });
 
 if (prod) {
