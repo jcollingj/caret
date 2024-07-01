@@ -1494,6 +1494,7 @@ version: 1
             let submenuVisible = false;
 
             graphButtonEl.addEventListener("click", () => {
+                console.log("Submenu clicked");
                 const submenuConfigs: SubmenuItemConfig[] = [
                     {
                         name: "User",
@@ -1597,6 +1598,7 @@ version: 1
                         },
                     },
                 ];
+                console.log("Here 2");
 
                 if (
                     node &&
@@ -1660,8 +1662,9 @@ version: 1
                         },
                     });
                 }
-
+                console.log("Creating sub menu");
                 let submenuEl = createSubmenu(submenuConfigs);
+                console.log("Sub menu created");
 
                 // Append the submenu to the main button
                 graphButtonEl.appendChild(submenuEl);
@@ -1671,6 +1674,7 @@ version: 1
                 } else {
                     submenuEl.classList.remove("visible");
                 }
+                console.log("Done adding sub menu");
             });
 
             menuEl.appendChild(graphButtonEl);
