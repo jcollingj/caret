@@ -2341,7 +2341,6 @@ version: 1
                 }
                 node.setText(new_content);
                 node.render();
-                node.moveTo();
             }
         }
     }
