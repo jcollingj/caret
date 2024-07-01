@@ -1,7 +1,7 @@
 {
     "name": "caret",
-    "version": "0.2.31",
-    "description": "Caret is a plugin that brings LLM capabilities into Obsidian.",
+    "version": "0.2.32",
+    "description": "Caret brings LLM capabilities into your vault, with a special focus on the canvas",
     "main": "main.js",
     "scripts": {
         "dev": "node esbuild.config.mjs",

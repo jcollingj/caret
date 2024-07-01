@@ -11,6 +11,12 @@ module.exports = {
         parser: "yaml",
       },
     },
+    {
+      files: ["*.json", "*.jsonc"],
+      options: {
+        parser: "json",
+      },
+    },
   ],
   // Default parser for other file types
   parser: "typescript",

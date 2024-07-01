@@ -170,7 +170,7 @@ const ChatComponent = forwardRef<
             }
 
             // Update the conversation state with the new user message
-            setConversation((prev) => {
+            setConversation((prev: any) => {
                 const newConversation = [...prev, { content: userMessage, role: "user" }];
                 handleConversationUpdate(newConversation);
                 return newConversation;
@@ -179,7 +179,7 @@ const ChatComponent = forwardRef<
         getConversation: () => conversation, // Add this line
     }));
 
-    const handleConversationUpdate = async (newConversation) => {
+    const handleConversationUpdate = async (newConversation: any) => {
         let total_context_length = 0;
         let valid_conversation = [];
 
@@ -226,7 +226,7 @@ const ChatComponent = forwardRef<
         }
     };
 
-    const streamMessage = async (stream_response) => {
+    const streamMessage = async (stream_response: any) => {
         if (plugin.settings.llm_provider === "ollama") {
             for await (const part of stream_response) {
                 setConversation((prev) => {

@@ -7,7 +7,9 @@ export const redBackgroundField = StateField.define<DecorationSet>({
     update(oldState: DecorationSet, transaction: Transaction): DecorationSet {
         const builder = new RangeSetBuilder<Decoration>();
         const docText = transaction.state.doc.toString();
+        // @ts-ignore
         const delete_regex = /\|-(.*?)-\|/gs; // Changed to match across lines
+        // @ts-ignore
         const add_regex = /\|\+(.*?)\+\|/gs; // Changed to match across lines
         let delete_match;
         let add_match;
