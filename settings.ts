@@ -12,6 +12,7 @@ import {
     setTooltip,
     setIcon,
     requestUrl,
+    debounce,
 } from "obsidian";
 type ModelDropDownSettings = {
     openai: string;
@@ -220,20 +221,29 @@ export class CaretSettingTab extends PluginSettingTab {
             .setDesc(
                 "After you added API keys for the first time you will need to reload the plugin for those changes to take effect. \n This only needs to be done the first time or when you change your keys."
             );
-
-        new Setting(containerEl).setName("Save Settings").addButton((button) => {
-            button
-                .setButtonText("Save")
-                .setClass("save-button")
-                .onClick(async (evt: MouseEvent) => {
-                    await this.plugin.saveSettings();
-                    await this.plugin.loadSettings();
-                    new Notice("Settings Saved!");
-                });
-        });
     }
     chat_settings_tab(containerEl: HTMLElement): void {
         let tempChatFolderPath = this.plugin.settings.chat_logs_folder; // Temporary storage for input value
+
+        const debouncedSave = debounce(
+            async (value: string) => {
+                if (value.length <= 1) {
+                    new Notice("The folder path must be longer than one character.");
+                    return;
+                }
+                if (value.endsWith("/")) {
+                    new Notice("The folder path must not end with a trailing slash.");
+                    return;
+                }
+                if (value !== this.plugin.settings.chat_logs_folder) {
+                    this.plugin.settings.chat_logs_folder = value;
+                    await this.plugin.saveSettings();
+                    await this.plugin.loadSettings();
+                }
+            },
+            1000,
+            true
+        ); // 500ms delay
 
         new Setting(containerEl)
             .setName("Chat folder path")
@@ -242,7 +252,8 @@ export class CaretSettingTab extends PluginSettingTab {
                 text.setPlaceholder("Enter folder path")
                     .setValue(this.plugin.settings.chat_logs_folder)
                     .onChange((value: string) => {
-                        tempChatFolderPath = value; // Store the value temporarily
+                        tempChatFolderPath = value;
+                        debouncedSave(value);
                     });
             });
 
@@ -285,29 +296,6 @@ export class CaretSettingTab extends PluginSettingTab {
                     await this.plugin.loadSettings();
                 });
             });
-
-        new Setting(containerEl)
-            .setName("Save settings")
-            .setDesc("Save the chat settings")
-            .addButton((button) => {
-                button.setButtonText("Save").onClick(async () => {
-                    // Validate the path when the save button is clicked
-                    if (tempChatFolderPath.length <= 1) {
-                        new Notice("The folder path must be longer than one character.");
-                        return;
-                    }
-                    if (tempChatFolderPath.endsWith("/")) {
-                        new Notice("The folder path must not end with a trailing slash.");
-                        return;
-                    }
-                    if (tempChatFolderPath !== this.plugin.settings.chat_logs_folder) {
-                        this.plugin.settings.chat_logs_folder = tempChatFolderPath;
-                    }
-                    await this.plugin.saveSettings();
-                    await this.plugin.loadSettings();
-                    new Notice("Chat settings saved!");
-                });
-            });
     }
 
     display(): void {
@@ -317,20 +305,20 @@ export class CaretSettingTab extends PluginSettingTab {
             this.plugin.settings.caret_version = DEFAULT_SETTINGS.caret_version;
         }
 
-        // LLM Provider Settings
-        new Setting(containerEl)
-            // .setName("LLM Provider")
-            .setDesc(`Caret Version: ${this.plugin.settings.caret_version}`);
-
         const tabContainer = containerEl.createEl("div", { cls: "tab-container" });
-        const apiTab = tabContainer.createEl("button", { text: "API Settings", cls: "tab" });
-        const chatTab = tabContainer.createEl("button", { text: "Chat Settings", cls: "tab" });
+        const apiTab = tabContainer.createEl("button", { text: "LLM APIs ", cls: "tab" });
+        const chatTab = tabContainer.createEl("button", { text: "Chat", cls: "tab" });
 
         const apiSettingsContainer = containerEl.createEl("div", { cls: "api-settings-container hidden" });
         const chatSettingsContainer = containerEl.createEl("div", { cls: "chat-settings-container hidden" });
 
         this.api_settings_tab(apiSettingsContainer);
         this.chat_settings_tab(chatSettingsContainer);
+
+        // LLM Provider Settings
+        new Setting(containerEl)
+            // .setName("LLM Provider")
+            .setDesc(`Caret Version: ${this.plugin.settings.caret_version}`);
 
         apiTab.addEventListener("click", () => {
             apiSettingsContainer.classList.remove("hidden");

@@ -428,7 +428,6 @@ export default class CaretPlugin extends Plugin {
 
                         // Initialize a new list to hold the prompts
                         const prompts = [];
-                        console.log({ ordered_node_ids });
 
                         // Iterate over the ordered node IDs
                         for (const node_id of ordered_node_ids) {
@@ -475,7 +474,6 @@ version: 1
 \`\`\`
 `.trim();
 
-                        console.log({ prompts });
                         let base_file_name = prompts[0]
                             .split(" ")
                             .slice(0, 10)
@@ -486,7 +484,6 @@ version: 1
                         let file_path = `${chat_folder_path}/${file_name}`;
                         let file;
                         let counter = 1;
-                        console.log({ file_path });
 
                         // Check if the file already exists and iterate until we find a new name
                         while (this.app.vault.getFileByPath(file_path)) {
@@ -504,7 +501,7 @@ version: 1
                     }
                     return true;
                 }
-                console.log("Executing here");
+
                 return false;
             },
         });
@@ -652,7 +649,7 @@ version: 1
                                     node.setText(content);
                                 }
                             };
-                            console.log({ all_text });
+
                             modal.open();
                         })();
                     }
@@ -695,8 +692,8 @@ version: 1
                             const current_file = this.app.workspace.getActiveFile();
                             const front_matter = await this.getFrontmatter(current_file);
 
-                            if (front_matter.caret_prompt !== "linear") {
-                                new Notice("Not a linear workflow");
+                            if (front_matter.caret_prompt !== "linear" && front_matter.caret_prompt !== "parallel") {
+                                new Notice("Not a workflow");
                                 return;
                             }
                             const leaf = this.app.workspace.getLeaf(true);
@@ -1986,7 +1983,10 @@ version: 1
                         const xml = await this.parseXml(xml_content);
                         const system_prompt_list = xml.root.system_prompt;
 
-                        const system_prompt = system_prompt_list[0]._.trim();
+                        let system_prompt = "";
+                        if (system_prompt_list[0]._) {
+                            system_prompt = system_prompt_list[0]._.trim;
+                        }
 
                         const prompts = xml.root.prompt;
                         const card_height = node.height;
@@ -2130,7 +2130,7 @@ version: 1
                 new_canvas_node.text = "";
                 await this.update_node_content(new_node_id, stream, provider);
             } else {
-                const content = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
+                const content = await this.llm_call(provider, model, conversation);
                 new_canvas_node.setText(content);
             }
 
@@ -2148,6 +2148,7 @@ version: 1
 
         for (let i = 0; i < longest_lineage.length; i++) {
             const node = longest_lineage[i];
+
             const node_context = await this.getAssociatedNodeContent(node, nodes, edges);
             // @ts-ignore
             let role = node.role || "";
@@ -2193,6 +2194,15 @@ version: 1
         if (local_system_prompt.length > 0) {
             conversation.unshift({ role: "system", content: local_system_prompt });
         }
+
+        // Iterate over the conversation and insert an assistant message between consecutive user messages
+        for (let i = 0; i < conversation.length - 1; i++) {
+            if (conversation[i].role === "user" && conversation[i + 1].role === "user") {
+                conversation.splice(i + 1, 0, { role: "assistant", content: "-" });
+                i++; // Skip the next element as we just inserted a new one
+            }
+        }
+
         return { conversation };
     }
 
@@ -2210,7 +2220,9 @@ version: 1
         if (sparkle_config.temperature !== settings.temperature) {
             temperature = sparkle_config.temperature;
         }
-        return { model, provider, temperature };
+        const mergedOutput = { model, provider, temperature };
+
+        return mergedOutput;
     }
 
     async refreshNode(
@@ -2370,8 +2382,8 @@ version: 1
                 });
 
                 const body = {
-                    model: this.settings.model,
-                    max_tokens: 4095,
+                    model: model,
+                    max_tokens: 4096,
                     messages: conversation,
                     system: systemContent, // Set the system parameter
                 };
