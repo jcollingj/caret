@@ -46,7 +46,7 @@ import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.35",
+    caret_version: "0.2.38",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -1579,8 +1579,16 @@ version: 1
                                 this.settings.model,
                                 [llm_prompt]
                             );
-
-                            node.setText(condensed_content);
+                            const new_node = await this.createChildNode(
+                                canvas,
+                                node,
+                                node.x + 50,
+                                node.y,
+                                condensed_content,
+                                null,
+                                null
+                            );
+                            // node.setText(condensed_content);
                             const word_count = condensed_content.split(/\s+/).length;
                             const number_of_lines = Math.ceil(word_count / 7);
                             if (word_count > 500) {
@@ -1590,9 +1598,9 @@ version: 1
                                 node.height = Math.max(200, number_of_lines * 45);
                             }
 
-                            node.unknownData.text = condensed_content;
-                            node.text = condensed_content;
-                            node.render();
+                            new_node.unknownData.text = condensed_content;
+                            new_node.text = condensed_content;
+                            new_node.render();
 
                             canvas.requestFrame();
                         },
@@ -2630,8 +2638,8 @@ version: 1
         x: number,
         y: number,
         content: string = "",
-        from_side: string = "right",
-        to_side: string = "left"
+        from_side: string | null = "right",
+        to_side: string | null = "left"
     ) {
         let tempChildNode = await this.addNodeToCanvas(canvas, this.generateRandomId(16), {
             x: x,
@@ -2641,7 +2649,9 @@ version: 1
             type: "text",
             content,
         });
-        await this.createEdge(parentNode, tempChildNode, canvas, from_side, to_side);
+        if (from_side && to_side) {
+            await this.createEdge(parentNode, tempChildNode, canvas, from_side, to_side);
+        }
 
         const node = canvas.nodes?.get(tempChildNode?.id!);
         if (!node) {
