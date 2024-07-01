@@ -2149,13 +2149,24 @@ version: 1
         for (let i = 0; i < longest_lineage.length; i++) {
             const node = longest_lineage[i];
 
-            const node_context = await this.getAssociatedNodeContent(node, nodes, edges);
+            let node_context = await this.getAssociatedNodeContent(node, nodes, edges);
+            const block_ref_content = await this.getRefBlocksContent(node_context);
+            if (block_ref_content.length > 0) {
+                node_context += `\n${block_ref_content}`;
+            }
+            if (node_context.length > 0) {
+                node_context += `\n${node_context}`;
+            }
+            // This should only go one layer deep:
+
+            console.log({ node_context });
             // @ts-ignore
             let role = node.role || "";
             if (role === "user") {
                 let content = node.text;
                 // Only for the first node
                 // And get referencing content here.
+                console.log({ content });
                 const block_ref_content = await this.getRefBlocksContent(content);
                 if (block_ref_content.length > 0) {
                     content += `\n${block_ref_content}`;
