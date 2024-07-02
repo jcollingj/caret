@@ -286,7 +286,7 @@ export class CaretSettingTab extends PluginSettingTab {
             // cmd_enter: "CMD + Enter",
         };
         new Setting(containerEl)
-            .setName("Send chat shortcut")
+            .setName("Send chat keybinds")
             .setDesc("Select which shortcut will be used to send messages.")
             .addDropdown((dropdown) => {
                 dropdown.addOptions(send_chat_shortcut_options).onChange(async (selected) => {
