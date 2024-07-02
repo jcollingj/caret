@@ -7,7 +7,14 @@ export class CaretCanvas {
   nodes: Node[];
   edges: Edge[];
   canvas: any;
+  canvasKeybinds: { [key: string]: string };
   constructor(readonly canvas_view: View) {
+    this.canvasKeybinds = {
+      "ArrowUp": "move_up",
+      "ArrowDown": "move_down",
+      "ArrowLeft": "move_left",
+      "ArrowRight": "move_right"
+    };
     // @ts-ignore
     if (!canvas_view || !canvas_view.canvas) {
       return;
