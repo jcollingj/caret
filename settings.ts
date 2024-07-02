@@ -296,6 +296,19 @@ export class CaretSettingTab extends PluginSettingTab {
                     await this.plugin.loadSettings();
                 });
             });
+
+        new Setting(containerEl)
+            .setName("Canvas keybinds")
+            .setDesc("Select which keybinds will be used for canvas operations.")
+            .addText((text) => {
+                text.setPlaceholder("Enter canvas keybinds")
+                    .setValue(this.plugin.settings.canvas_keybinds)
+                    .onChange(async (value) => {
+                        this.plugin.settings.canvas_keybinds = value;
+                        await this.plugin.saveSettings();
+                        await this.plugin.loadSettings();
+                    });
+            });
     }
 
     display(): void {
