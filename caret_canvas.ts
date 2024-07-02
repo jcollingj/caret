@@ -7,13 +7,35 @@ export class CaretCanvas {
   nodes: Node[];
   edges: Edge[];
   canvas: any;
-  canvasKeybinds: { [key: string]: string };
+  canvasKeybinds: {
+    [command: string]: {
+      keybind: string;
+      description: string;
+      enabled: boolean;
+    }
+  };
   constructor(readonly canvas_view: View) {
     this.canvasKeybinds = {
-      "ArrowUp": "move_up",
-      "ArrowDown": "move_down",
-      "ArrowLeft": "move_left",
-      "ArrowRight": "move_right"
+      NavigateUp: {
+        keybind: "ArrowUp",
+        description: "Move up in the canvas",
+        enabled: true
+      },
+      NavigateDown: {
+        keybind: "ArrowDown",
+        description: "Move down in the canvas",
+        enabled: true
+      },
+      NavigateLeft: {
+        keybind: "ArrowLeft",
+        description: "Move left in the canvas",
+        enabled: true
+      },
+      NavigateRight: {
+        keybind: "ArrowRight",
+        description: "Move right in the canvas",
+        enabled: true
+      }
     };
     // @ts-ignore
     if (!canvas_view || !canvas_view.canvas) {
