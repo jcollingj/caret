@@ -11,12 +11,12 @@ export class RemoveCustomModelModal extends Modal {
     onOpen() {
         const { contentEl, modalEl } = this;
         contentEl.empty();
-        contentEl.createEl("h2", { text: "Remove custom model", cls: "insert-file-header" });
+        contentEl.createEl("h2", { text: "Remove custom model", cls: "caret-insert-file-header" });
 
         // Set the width of the modal
         modalEl.classList.add("custom-model-modal-container"); // Apply the CSS class here
 
-        const table = contentEl.createEl("table", { cls: "custom-models-table" });
+        const table = contentEl.createEl("table", { cls: "caret-custom-models-table" });
         const headerRow = table.createEl("tr");
         headerRow.createEl("th", { text: "Name" });
         headerRow.createEl("th", { text: "Context Window" });
@@ -32,8 +32,8 @@ export class RemoveCustomModelModal extends Modal {
             row.createEl("td", { text: model.context_window.toString() });
             row.createEl("td", { text: model.endpoint });
 
-            const deleteButtonContainer = row.createEl("td", { cls: "delete-btn-container" });
-            const deleteButton = deleteButtonContainer.createEl("button", { text: "Delete", cls: "mod-warning" });
+            const deleteButtonContainer = row.createEl("td", { cls: "caret-delete-btn-container" });
+            const deleteButton = deleteButtonContainer.createEl("button", { text: "Delete", cls: "caret-mod-warning" });
             deleteButton.addEventListener("click", async () => {
                 delete custom_models[model_id];
                 await this.plugin.saveSettings();

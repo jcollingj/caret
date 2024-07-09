@@ -1,5 +1,4 @@
-
-.container {
+.caret-container {
     padding: 2px 15px;
     display: flex;
     flex-direction: column;
@@ -9,7 +8,7 @@
     background-color: ; /* Background color not specified */
     white-space: pre-wrap; /* Preserve whitespace and formatting */
 }
-.messages-container {
+.caret-messages-container {
     flex-grow: 1;
     display: flex;
     flex-direction: column;
@@ -21,7 +20,7 @@
     white-space: pre-wrap; /* Preserve whitespace and formatting */
 }
 
-.message {
+.caret-message {
     padding: 10px; /* Increased padding to prevent text cut-off */
     border-radius: 5px;
     max-width: calc(100% - 10px); /* Prevent overflow */
@@ -32,18 +31,18 @@
     width: 100%;
 }
 
-.message.user, .message.system {
+.caret-message.user, .caret-message.system {
     align-self: flex-start;
     background-color: #e0e0e0; /* Light gray for better visibility in both light and dark modes */
     white-space: pre-wrap; /* Preserve whitespace and formatting */
 }
 
-.message.assistant {
+.caret-message.assistant {
     background-color: #cfe9e3; /* Light green for better visibility in both light and dark modes */
     white-space: pre-wrap; /* Preserve whitespace and formatting */
 }
 
-.full_width_text_container {
+.caret-full_width_text_container {
     width: 100%;
     resize: vertical;
     overflow-y: auto;
@@ -53,27 +52,27 @@
     white-space: pre-wrap; /* Preserve whitespace and formatting */
 }
 
-.button-container {
+.caret-button-container {
     width: 100%;
     display: flex;
     flex-direction: row;
     justify-content: space-between;
 }
 
-.flex-col {
+.caret-flex-col {
     display: flex;
     flex-direction: column;
 }
-.w-full {
+.caret-w-full {
     width: 100%
 }
-.mb-2 {
+.caret-mb-2 {
     margin-bottom: 0.5rem; /* 8px assuming the root font-size is 16px */
 }
-.mb-4 {
+.caret-mb-4 {
     margin-bottom: 16px; /* 1rem typically equals 16px */
 }
-.theme-light .settings_container {
+.theme-light .caret-settings_container {
     background-color: rgb(187, 187, 187); /* Light grey for light theme */
     padding: 10px; 
     margin-bottom: 10px;
@@ -82,7 +81,7 @@
     z-index: 1000000;
 }
 
-.theme-dark .settings_container {
+.theme-dark .caret-settings_container {
     background-color: #404040; /* Darker grey for dark theme */
     padding: 10px; 
     margin-bottom: 10px;
@@ -91,7 +90,7 @@
     z-index: 1000000;
 }
 
-.theme-light .settings_code_block {
+.theme-light .caret-settings_code_block {
     background-color: #fbf4f4; /* Light grey background for light theme */
     border-radius: 4px; /* Rounded corners */
     padding: 4px;
@@ -99,27 +98,27 @@
     z-index: 1000000;
 }
 
-.theme-dark .settings_code_block {
+.theme-dark .caret-settings_code_block {
     background-color: #606060; /* Darker grey for dark theme */
     border-radius: 4px; /* Rounded corners */
     padding: 4px;
     user-select: text;
     z-index: 1000000;
 }
-.hidden-value-unsecure {
+.caret-hidden-value-unsecure {
     -webkit-text-security: disc;
 }
 
-.insert-file-header {
+.caret-insert-file-header {
     font-size: 18px;
     font-weight: bold;
 }
 
-.insert-file-files-display {
+.caret-insert-file-files-display {
     height: 200px;
     overflow: auto; /* Changed from 'hidden' to 'auto' to allow scrolling */
 }
-.insert-file-file-name {
+.caret-insert-file-file-name {
     font-size: 14px;
     padding-top: 1px;
     padding-bottom: 1px;
@@ -127,54 +126,52 @@
     border: 1px solid transparent; /* Ensures layout doesn't change when selected */
     transition: font-size 0.2s, border-color 0.2s; /* Smooth transition for visual changes */
 }
-.file-filter-input {
+.caret-file-filter-input {
     margin-bottom: 4px;
     width: 100%;
 }
 
-.insert-file-file-name.selected {
+.caret-insert-file-file-name.selected {
     font-size: 16px; /* Slightly larger font size for selected item */
     border-color: #cccccc; /* Light gray border for selected item */
     background-color: #f0f0f0; /* Optional: light background color for better visibility */
     border-radius: 4px;
 }
-.custom-models-table {
+.caret-custom-models-table {
     width: 100%;
     border-collapse: collapse;
 }
 
-.custom-models-table th,
-.custom-models-table td {
+.caret-custom-models-table th,
+.caret-custom-models-table td {
     text-align: left;
     padding: 8px;
     border: 1px solid #ddd;
 }
 
-.custom-models-table th {
+.caret-custom-models-table th {
     background-color: #f2f2f2;
 }
 
-.custom-models-table tr:nth-child(even) {
+.caret-custom-models-table tr:nth-child(even) {
     background-color: #f9f9f9;
 }
 
-.custom-models-table tr:hover {
+.caret-custom-models-table tr:hover {
     background-color: #ddd;
 }
 
-.mod-warning {
+.caret-mod-warning {
     color: red;
     font-weight: bold;
 }
 
-
-
-.system-prompt-textarea {
-        width: 100%;
-        height: 400px;
-        resize: vertical;
+.caret-system-prompt-textarea {
+    width: 100%;
+    height: 400px;
+    resize: vertical;
 }
-.workflow_container {
+.caret-workflow_container {
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
@@ -182,33 +179,33 @@
     width: 100%;
 }
 
-.flex-row {
+.caret-flex-row {
     display: flex;
     flex-direction: row;
     justify-content: flex-start;
     align-items: center;
 }
 
-.w-8 {
+.caret-w-8 {
     width: 360px
 }
-.workflow_text_area {
+.caret-workflow_text_area {
     height: 150px
 }
-.row_items_spacing {
+.caret-row_items_spacing {
     margin-right: 3px;
 }
 
-.bottom-screen-padding {
+.caret-bottom-screen-padding {
     padding-bottom: 100px;
 }
 /* Add this CSS to your plugin's stylesheet */
-.clickable-icon.wand {
+.caret-clickable-icon.wand {
     position: relative;
     padding: 10px; /* Increase padding to make the button larger */
 }
 
-.submenu {
+.caret-submenu {
     display: none;
     position: absolute;
     margin-top: 15px;
@@ -226,7 +223,7 @@
     border-radius: 4px;
 }
 
-.submenu-item {
+.caret-submenu-item {
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -236,17 +233,17 @@
     border: 1px solid #ccc;
 }
 
-.submenu-item:hover {
+.caret-submenu-item:hover {
     /* background-color: #f0f0f0; */
 }
 
-.message-container {
+.caret-message-container {
     display: flex;
     flex-direction: column;
     width: 100%; /* Adjusts to the width of the content */
 }
 
-.chat-message-actions {
+.caret-chat-message-actions {
     /* width: 40px; */
     padding-top: 4px;
     display: flex;
@@ -254,25 +251,24 @@
     margin-top: 1px;
 }
 
-
-.theme-light .chat-message-actions {
+.theme-light .caret-chat-message-actions {
     color: black;
 }
 
-.theme-dark .chat-message-actions {
+.theme-dark .caret-chat-message-actions {
     background-color: transparent;
 }
-.chat-message-convert-to-note {
+.caret-chat-message-convert-to-note {
     margin-right: 8px;
 }
-.chat-message-checkbox {
+.caret-chat-message-checkbox {
     top: 3px;
 }
-.input-container {
+.caret-input-container {
     /* background-color: #f0f0f0; */
     background-color: var(--background-primary);;
 }
-.bulk-convert-label {
+.caret-bulk-convert-label {
     margin-right: 3px;
 }
 /* .react-markdown {
@@ -290,49 +286,48 @@
     margin-bottom: 0.5em;
   } */
 
-  .markdown-body ul {
+.caret-markdown-body ul {
     list-style-type: disc;
     /* padding-left: 20px; */
+}
+.caret-markdown-body li {
+    margin-top: 0px;
+    margin-bottom: 0px;
+}
+.caret-markdown-body p {
+    margin-top: 0px;
+    margin-bottom: 0px;
+}
 
-  }
-  .markdown-body li {
-    margin-top: 0px;
-    margin-bottom: 0px;
-  }
-  .markdown-body p {
-    margin-top: 0px;
-    margin-bottom: 0px;
-  }
-  
-  .markdown-body code {
+.caret-markdown-body code {
     background-color: #f6f8fa;
     padding: 0.2em 0.4em;
     border-radius: 3px;
     margin-top: 0px;
     margin-bottom: 0px;
-  }
-.hidden {
+}
+.caret-hidden {
     display: none;
-  }
+}
 
-.tab {
+.caret-tab {
     margin-right: 4px;
 }
 
 /* Modals CSS */
 /* Inline Editing Modal */
-.inline-editing-container-div {
+.caret-inline-editing-container-div {
     height: 60px;
     overflow: scroll;
 }
-.inline-editing-textarea {
+.caret-inline-editing-textarea {
     width: 100%;
     min-height: 100px;
     resize: none;
 }
 
 /* Canvas Styles */
-#custom-display {
+#caret-custom-display {
     width: 100%;
     height: 40px;
     background-color: rgba(211, 211, 211, 0.8);
@@ -340,7 +335,7 @@
     padding-left: 8px;
     padding-top: 4px;
 }
-.submenu {
+.caret-submenu {
     display: none;
     /* other styles */
     grid-template-columns: repeat(4, 1fr); /* Up to four divs wide */
@@ -349,14 +344,14 @@
     z-index: 100000;
 }
 
-.submenu.visible {
+.caret-submenu.visible {
     display: grid; /* Change this to grid */
 }
 /* Icon Grid */
 
 /* Chat Component */
 /* Chat Copy Icon */
-.chat-copy-icon {
+.caret-chat-copy-icon {
     position: absolute;
     top: 2px;
     right: 2px;
@@ -365,19 +360,18 @@
     border-radius: 12px;
     transition: background-color 0.3s ease;
 }
-.chat-copy-icon:hover {
+.caret-chat-copy-icon:hover {
     background-color: lightgray;
 }
-.custom-model-modal-container {
+.caret-custom-model-modal-container {
     width: 800px;
     min-width: 600px;
-
 }
-.system-prompt-modal-text-area {
+.caret-system-prompt-modal-text-area {
     height: 400px;
     width: 100%;
 }
-.workflow-editor-temperature-input {
+.caret-workflow-editor-temperature-input {
     appearance: number-input;
     -webkit-appearance: number-input;
 }

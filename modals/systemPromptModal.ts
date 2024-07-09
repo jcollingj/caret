@@ -19,7 +19,7 @@ export class SystemPromptModal extends Modal {
             text: this.plugin.settings.system_prompt || "",
         });
 
-        const submitButton = contentEl.createEl("button", { text: "Submit", cls: "mod-cta" });
+        const submitButton = contentEl.createEl("button", { text: "Submit", cls: "caret-mod-cta" });
         submitButton.addEventListener("click", async () => {
             this.plugin.settings.system_prompt = textArea.value;
             new Notice("System prompt updated");

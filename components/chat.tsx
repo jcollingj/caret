@@ -40,7 +40,7 @@ const CodeBlock: React.FC<{ language: string; value: string }> = ({ language, va
                 <Clipboard
                     size={24}
                     onClick={copyToClipboard}
-                    className="chat-copy-icon" // Apply the CSS class here
+                    className="caret-chat-copy-icon" // Apply the CSS class here
                 />
                 {copied && (
                     <span
@@ -65,7 +65,7 @@ const CodeBlock: React.FC<{ language: string; value: string }> = ({ language, va
 const ReactView: React.FC<{ markdown: string }> = ({ markdown }) => {
     return (
         <ReactMarkdown
-            className="markdown-body" // Add a proper class for styling
+            className="caret-markdown-body" // Add a proper class for styling
             remarkPlugins={[remarkGfm]}
             components={{
                 code({ node, inline, className, children, ...props }) {
@@ -262,35 +262,35 @@ const ChatComponent = forwardRef<
     }, [initialConversation]);
 
     return (
-        <div className="chat-container" style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-            <div className="messages-container" style={{ flex: 1, overflowY: "auto" }}>
+        <div className="caret-chat-container" style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+            <div className="caret-messages-container" style={{ flex: 1, overflowY: "auto" }}>
                 {conversation.map((message, index) => (
-                    <div className="message-container" key={index}>
-                        <div className={`message ${message.role}`}>
+                    <div className="caret-message-container" key={index}>
+                        <div className={`caret-message ${message.role}`}>
                             <ReactView markdown={message.content} />
                         </div>
-                        <div className="chat-message-actions">
+                        <div className="caret-chat-message-actions">
                             <NotebookPen
                                 size={14}
                                 onClick={() => convertToNote(message.content)}
-                                className="chat-message-convert-to-note"
+                                className="caret-chat-message-convert-to-note"
                             />
                             <div>
-                                <span className="bulk-convert-label">Bulk Convert</span>
+                                <span className="caret-bulk-convert-label">Bulk Convert</span>
                                 <input
                                     type="checkbox"
                                     checked={!!checkedMessages[index]}
                                     onChange={() => handleCheckboxChange(index)}
-                                    className="chat-message-checkbox"
+                                    className="caret-chat-message-checkbox"
                                 />
                             </div>
                         </div>
                     </div>
                 ))}
             </div>
-            <div className="input-container" style={{ position: "sticky", bottom: 0, padding: "10px" }}>
+            <div className="caret-input-container" style={{ position: "sticky", bottom: 0, padding: "10px" }}>
                 <textarea
-                    className="full_width_text_container"
+                    className="caret-full_width_text_container"
                     placeholder="Type something..."
                     value={textBoxValue}
                     onChange={(e) => setTextBoxValue(e.target.value)}
@@ -313,11 +313,11 @@ const ChatComponent = forwardRef<
                     style={{ width: "100%", boxSizing: "border-box" }}
                 />
                 <div
-                    className="button-container"
+                    className="caret-button-container"
                     style={{ textAlign: "right", marginTop: "10px", marginBottom: "4px" }}
                 >
                     <button onClick={handleSubmit}>Submit</button>
-                    <div className="right-button-container">
+                    <div className="caret-right-button-container">
                         <button onClick={handleNewChat} style={{ marginRight: "4px" }}>
                             New Chat
                         </button>

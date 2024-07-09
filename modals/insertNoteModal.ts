@@ -17,14 +17,14 @@ export class InsertNoteModal extends Modal {
 
         const html_insert_files = contentEl.createEl("p", {
             text: "Insert File",
-            cls: "insert-file-header",
+            cls: "caret-insert-file-header",
         });
 
         // Create a text input for filtering files
         const inputField = contentEl.createEl("input", {
             type: "text",
             placeholder: "Enter text to search files",
-            cls: "file-filter-input",
+            cls: "caret-file-filter-input",
         });
 
         // Function to filter files based on input text and limit to 10 results
@@ -40,7 +40,7 @@ export class InsertNoteModal extends Modal {
         };
 
         // Display the filtered files
-        const filesDisplay = contentEl.createEl("div", { cls: "insert-file-files-display" });
+        const filesDisplay = contentEl.createEl("div", { cls: "caret-insert-file-files-display" });
 
         let currentSelectedIndex = -1; // -1 means the input field is selected
 
@@ -67,7 +67,10 @@ export class InsertNoteModal extends Modal {
 
             // Add filtered files to the display
             filtered_files.forEach((file) => {
-                const fileElement = filesDisplay.createEl("div", { text: file.name, cls: "insert-file-file-name" });
+                const fileElement = filesDisplay.createEl("div", {
+                    text: file.name,
+                    cls: "caret-insert-file-file-name",
+                });
                 fileElement.addEventListener("click", () => {
                     this.onSubmit(`[[${file.name}]]`);
                     this.close();

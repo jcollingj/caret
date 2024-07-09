@@ -19,17 +19,17 @@ export class CMDJModal extends Modal {
         const { contentEl } = this;
         const textDisplay = contentEl.createEl("div", {
             text: this.selectedText,
-            cls: "inline-editing-container-div", // Apply the CSS class here
+            cls: "caret-inline-editing-container-div", // Apply the CSS class here
         });
 
         contentEl.createEl("br"); // Line break
 
         const textArea = contentEl.createEl("textarea", {
             placeholder: "Type here...",
-            cls: "inline-editing-textarea", // Apply the CSS class here
+            cls: "caret-inline-editing-textarea", // Apply the CSS class here
         });
 
-        const buttonContainer = contentEl.createEl("div", { cls: "button-container" });
+        const buttonContainer = contentEl.createEl("div", { cls: "caret-button-container" });
 
         new Setting(buttonContainer)
             .addButton((btn) =>

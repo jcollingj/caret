@@ -38,7 +38,7 @@ export class ConvertTextToNoteModal extends Modal {
             });
         const textArea = contentEl.createEl("textarea", {
             text: this.formatting_prompt,
-            cls: "content-l w-full h-20",
+            cls: "content-l caret-w-full",
             placeholder: "Enter the formatting song.",
         });
         textArea.onchange = (event) => {

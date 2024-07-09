@@ -46,13 +46,13 @@ export class FullPageChat extends ItemView {
         const metacontainer = this.containerEl.children[1];
         metacontainer.empty();
         const container = metacontainer.createEl("div", {
-            cls: "container",
+            cls: "caret-container",
         });
         metacontainer.prepend(container);
 
         // Create a container for messages
         this.messagesContainer = container.createEl("div", {
-            cls: "messages-container",
+            cls: "caret-messages-container",
         });
 
         // Render the React component using createRoot

@@ -269,6 +269,7 @@ export default class CaretPlugin extends Plugin {
                 apiKey: this.settings.anthropic_api_key,
             });
         }
+
         if (this.settings.open_router_key) {
             this.openrouter_client = new OpenAI({
                 baseURL: "https://openrouter.ai/api/v1",
@@ -600,10 +601,10 @@ version: 1
                             // Create a modal with a text input and a submit button
                             const modal = new Modal(this.app);
                             modal.contentEl.createEl("h1", { text: "Canvas Prompt" });
-                            const container = modal.contentEl.createDiv({ cls: "flex-col" });
+                            const container = modal.contentEl.createDiv({ cls: "caret-flex-col" });
                             const text_area = container.createEl("textarea", {
                                 placeholder: "",
-                                cls: "w-full mb-2",
+                                cls: "caret-w-full caret-mb-2",
                             });
                             const submit_button = container.createEl("button", { text: "Submit" });
                             submit_button.onclick = async () => {
@@ -1079,11 +1080,11 @@ version: 1
                         if (contentEl) {
                             const targetDiv = contentEl.querySelector(".markdown-embed-content.node-insert-event");
                             if (targetDiv) {
-                                let customDisplayDiv = contentEl.querySelector("#custom-display");
+                                let customDisplayDiv = contentEl.querySelector("#caret-custom-display");
                                 if (node.unknownData.role.length > 0) {
                                     if (!customDisplayDiv) {
                                         customDisplayDiv = document.createElement("div");
-                                        customDisplayDiv.id = "custom-display"; // Ensure the ID is set here to prevent multiple creations
+                                        customDisplayDiv.id = "caret-custom-display"; // Ensure the ID is set here to prevent multiple creations
                                         targetDiv.parentNode.insertBefore(customDisplayDiv, targetDiv);
                                     }
 
@@ -1465,11 +1466,11 @@ version: 1
             }
 
             function createSubmenu(configs: SubmenuItemConfig[]): HTMLElement {
-                const submenuEl = createEl("div", { cls: "submenu" });
+                const submenuEl = createEl("div", { cls: "caret-submenu" });
 
                 configs.forEach((config) => {
-                    const submenuItem = createEl("div", { cls: "submenu-item" });
-                    const iconEl = createEl("span", { cls: "clickable-icon" });
+                    const submenuItem = createEl("div", { cls: "caret-submenu-item" });
+                    const iconEl = createEl("span", { cls: "caret-clickable-icon" });
                     setIcon(iconEl, config.icon);
                     setTooltip(iconEl, config.tooltip, { placement: "top" });
                     submenuItem.appendChild(iconEl);
@@ -1494,7 +1495,6 @@ version: 1
             let submenuVisible = false;
 
             graphButtonEl.addEventListener("click", () => {
-                console.log("Submenu clicked");
                 const submenuConfigs: SubmenuItemConfig[] = [
                     {
                         name: "User",
@@ -1562,7 +1562,7 @@ version: 1
                     },
                     {
                         name: "Condense",
-                        icon: "lucide-arrow-up-narrow-wide",
+                        icon: "lucide-arrow-down-narrow-wide",
                         tooltip: "Condenses node text content",
                         callback: async () => {
                             await canvas.requestSave(true);
@@ -1606,7 +1606,6 @@ version: 1
                         },
                     },
                 ];
-                console.log("Here 2");
 
                 if (
                     node &&
@@ -1670,9 +1669,7 @@ version: 1
                         },
                     });
                 }
-                console.log("Creating sub menu");
                 let submenuEl = createSubmenu(submenuConfigs);
-                console.log("Sub menu created");
 
                 // Append the submenu to the main button
                 graphButtonEl.appendChild(submenuEl);
@@ -1682,7 +1679,6 @@ version: 1
                 } else {
                     submenuEl.classList.remove("visible");
                 }
-                console.log("Done adding sub menu");
             });
 
             menuEl.appendChild(graphButtonEl);
@@ -2172,14 +2168,12 @@ version: 1
             }
             // This should only go one layer deep:
 
-            console.log({ node_context });
             // @ts-ignore
             let role = node.role || "";
             if (role === "user") {
                 let content = node.text;
                 // Only for the first node
                 // And get referencing content here.
-                console.log({ content });
                 const block_ref_content = await this.getRefBlocksContent(content);
                 if (block_ref_content.length > 0) {
                     content += `\n${block_ref_content}`;
@@ -2408,20 +2402,23 @@ version: 1
                     model: model,
                     max_tokens: 4096,
                     messages: conversation,
-                    system: systemContent, // Set the system parameter
                 };
-
+                if (systemContent.length > 0) {
+                    body["system"] = systemContent;
+                }
+                const headers = {
+                    "x-api-key": this.settings.anthropic_api_key,
+                    "anthropic-version": "2023-06-01", // Add this line
+                    "content-type": "application/json", // Add this line
+                };
                 const response = await requestUrl({
                     url: "https://api.anthropic.com/v1/messages",
                     method: "POST",
-                    headers: {
-                        "x-api-key": this.settings.anthropic_api_key,
-                        "anthropic-version": "2023-06-01", // Add this line
-                        "content-type": "application/json", // Add this line
-                    },
+                    headers: headers,
                     body: JSON.stringify(body),
                 });
                 const completion = await response.json;
+
                 new Notice("Message back from Anthropic");
                 const message = completion.content[0].text;
                 return message;

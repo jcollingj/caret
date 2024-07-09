@@ -137,13 +137,13 @@ export class CaretSettingTab extends PluginSettingTab {
         }
         if (this.plugin.settings.llm_provider === "ollama") {
             const ollama_info_container = containerEl.createEl("div", {
-                cls: "settings_container",
+                cls: "caret-settings_container",
             });
             ollama_info_container.createEl("strong", { text: "You're using Ollama!" });
             ollama_info_container.createEl("p", { text: "Remember to do the following:" });
             ollama_info_container.createEl("p", { text: "Make sure you have downloaded the model you want to use:" });
             const second_code_block_container = ollama_info_container.createEl("div", {
-                cls: "settings_code_block",
+                cls: "caret-settings_code_block",
             });
 
             second_code_block_container.createEl("code", { text: `ollama run ${this.plugin.settings.model}` });
@@ -154,7 +154,7 @@ export class CaretSettingTab extends PluginSettingTab {
                 text: "Then run this command to start the Ollama server and make it accessible from Obsidian:",
             });
             const code_block_container = ollama_info_container.createEl("div", {
-                cls: "settings_code_block",
+                cls: "caret-settings_code_block",
             });
             code_block_container.createEl("code", {
                 text: "OLLAMA_ORIGINS=app://obsidian.md* ollama serve",
@@ -318,12 +318,12 @@ export class CaretSettingTab extends PluginSettingTab {
             this.plugin.settings.caret_version = DEFAULT_SETTINGS.caret_version;
         }
 
-        const tabContainer = containerEl.createEl("div", { cls: "tab-container" });
-        const apiTab = tabContainer.createEl("button", { text: "LLM APIs ", cls: "tab" });
-        const chatTab = tabContainer.createEl("button", { text: "Chat", cls: "tab" });
+        const tabContainer = containerEl.createEl("div", { cls: "caret-tab-container" });
+        const apiTab = tabContainer.createEl("button", { text: "LLM APIs ", cls: "caret-tab" });
+        const chatTab = tabContainer.createEl("button", { text: "Chat", cls: "caret-tab" });
 
-        const apiSettingsContainer = containerEl.createEl("div", { cls: "api-settings-container hidden" });
-        const chatSettingsContainer = containerEl.createEl("div", { cls: "chat-settings-container hidden" });
+        const apiSettingsContainer = containerEl.createEl("div", { cls: "caret-api-settings-container hidden" });
+        const chatSettingsContainer = containerEl.createEl("div", { cls: "caret-chat-settings-container hidden" });
 
         this.api_settings_tab(apiSettingsContainer);
         this.chat_settings_tab(chatSettingsContainer);

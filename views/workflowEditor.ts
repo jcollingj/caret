@@ -83,18 +83,18 @@ export class LinearWorkflowEditor extends ItemView {
         const metacontainer = this.containerEl.children[1];
         metacontainer.empty();
         const container = metacontainer.createEl("div", {
-            cls: "workflow_container",
+            cls: "caret-workflow_container",
         });
         metacontainer.prepend(container);
 
         // Add description
 
         // Add workflow name input
-        const title_container = container.createEl("div", { cls: "flex-row" });
-        title_container.createEl("h2", { text: `Workflow Name:`, cls: "w-8" });
+        const title_container = container.createEl("div", { cls: "caret-flex-row" });
+        title_container.createEl("h2", { text: `Workflow Name:`, cls: "caret-w-8" });
         const workflow_name_input = title_container.createEl("input", {
             type: "text",
-            cls: "workflow-name-input w-full",
+            cls: "caret-workflow-name-input caret-w-full",
             value: this.workflow_name,
         });
         container.createEl("p", { text: "Add prompts that will then be run in a linear fashion on any input." });
@@ -102,7 +102,7 @@ export class LinearWorkflowEditor extends ItemView {
             this.workflow_name = workflow_name_input.value;
         });
 
-        this.prompt_container = container.createEl("div", { cls: "w-full" });
+        this.prompt_container = container.createEl("div", { cls: "caret-w-full" });
 
         // Create the system message right away
         this.add_system_prompt();
@@ -115,7 +115,9 @@ export class LinearWorkflowEditor extends ItemView {
         }
 
         // Create a button to add new prompts
-        const buttonContainer = container.createEl("div", { cls: "button-container bottom-screen-padding" });
+        const buttonContainer = container.createEl("div", {
+            cls: "caret-button-container caret-bottom-screen-padding",
+        });
 
         const addPromptButton = buttonContainer.createEl("button", { text: "Add new prompt" });
         addPromptButton.addEventListener("click", () => {
@@ -228,13 +230,13 @@ ${prompts_string}
     add_system_prompt(system_prompt: string = "") {
         // Add a toggle switch for workflow type
         const dropdown_container = this.prompt_container.createEl("div", {
-            cls: "dropdown-container",
+            cls: "caret-dropdown-container",
         });
 
-        dropdown_container.createEl("label", { text: "Workflow type: ", cls: "dropdown-label" });
+        dropdown_container.createEl("label", { text: "Workflow type: ", cls: "caret-dropdown-label" });
 
         const workflow_type_select = dropdown_container.createEl("select", {
-            cls: "workflow-type-select",
+            cls: "caret-workflow-type-select",
         });
 
         const options = [
@@ -259,7 +261,7 @@ ${prompts_string}
 
         this.prompt_container.createEl("h3", { text: "System Prompt" });
         const text_area = this.prompt_container.createEl("textarea", {
-            cls: "full_width_text_container",
+            cls: "caret-full_width_text_container",
             placeholder: "Add a system prompt",
         });
         text_area.value = this.system_prompt;
@@ -283,22 +285,22 @@ ${prompts_string}
         this.prompt_container.createEl("h3", { text: `Prompt ${step_number}` });
 
         const text_area = this.prompt_container.createEl("textarea", {
-            cls: `w-full workflow_text_area text_area_id_${step_number}`,
+            cls: `caret-w-full caret-workflow_text_area text_area_id_${step_number}`,
             placeholder: "Add a step into your workflow",
         });
         text_area.value = prompt.prompt;
         text_area.id = `text_area_id_${step_number}`;
         // Create a container div with class flex-row
         const options_container = this.prompt_container.createEl("div", {
-            cls: "flex-row",
+            cls: "caret-flex-row",
         });
         // Provider label and dropdown
         const provider_label = options_container.createEl("label", {
             text: "Provider",
-            cls: "row_items_spacing",
+            cls: "caret-row_items_spacing",
         });
         const provider_select = options_container.createEl("select", {
-            cls: "provider_select row_items_spacing",
+            cls: "caret-provider_select caret-row_items_spacing",
         });
         const settings: CaretPluginSettings = this.plugin.settings;
         const provider_entries = Object.entries(DEFAULT_SETTINGS.provider_dropdown_options);
@@ -322,10 +324,10 @@ ${prompts_string}
         // Model label and dropdown
         const model_label = options_container.createEl("label", {
             text: "Model",
-            cls: "row_items_spacing",
+            cls: "caret-row_items_spacing",
         });
         const model_select = options_container.createEl("select", {
-            cls: "model_select row_items_spacing",
+            cls: "caret-model_select caret-row_items_spacing",
         });
 
         // Function to update model options based on selected provider
@@ -358,13 +360,13 @@ ${prompts_string}
         // Temperature label and input
         const temperature_label = options_container.createEl("label", {
             text: "Temperature",
-            cls: "row_items_spacing",
+            cls: "caret-row_items_spacing",
         });
 
         // Temperature input
         const temperature_input = options_container.createEl("input", {
             type: "number",
-            cls: "workflow-editor-temperature-input temperature_input", // Apply the CSS class here
+            cls: "caret-workflow-editor-temperature-input caret-temperature_input", // Apply the CSS class here
         }) as HTMLInputElement;
 
         // Set the attributes separately to avoid TypeScript errors
@@ -376,11 +378,11 @@ ${prompts_string}
         // Delay label and input
         const delay_label = options_container.createEl("label", {
             text: "Delay",
-            cls: "row_items_spacing",
+            cls: "caret-row_items_spacing",
         });
         const delay_input = options_container.createEl("input", {
             type: "number",
-            cls: "delay_input row_items_spacing",
+            cls: "caret-delay_input caret-row_items_spacing",
             // @ts-ignore
             min: "0",
             max: "60",
