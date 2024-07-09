@@ -174,7 +174,7 @@ export class CaretSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                         await this.plugin.loadSettings();
                     });
-                text.inputEl.addClass("hidden-value-unsecure");
+                text.inputEl.addClass("caret-hidden-value-unsecure");
             });
 
         new Setting(containerEl)
@@ -188,7 +188,7 @@ export class CaretSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                         await this.plugin.loadSettings();
                     });
-                text.inputEl.addClass("hidden-value-unsecure");
+                text.inputEl.addClass("caret-hidden-value-unsecure");
             });
         new Setting(containerEl)
             .setName("Anthropic API key")
@@ -201,7 +201,7 @@ export class CaretSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                         await this.plugin.loadSettings();
                     });
-                text.inputEl.addClass("hidden-value-unsecure");
+                text.inputEl.addClass("caret-hidden-value-unsecure");
             });
         new Setting(containerEl)
             .setName("OpenRouter API key")
@@ -214,7 +214,7 @@ export class CaretSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                         await this.plugin.loadSettings();
                     });
-                text.inputEl.addClass("hidden-value-unsecure");
+                text.inputEl.addClass("caret-hidden-value-unsecure");
             });
         new Setting(containerEl)
             .setName("Reload after adding API keys!")
@@ -289,26 +289,29 @@ export class CaretSettingTab extends PluginSettingTab {
             .setName("Send chat keybinds")
             .setDesc("Select which shortcut will be used to send messages.")
             .addDropdown((dropdown) => {
-                dropdown.addOptions(send_chat_shortcut_options).onChange(async (selected) => {
-                    this.plugin.settings.chat_send_chat_shortcut = selected;
+                dropdown
+                    .addOptions(send_chat_shortcut_options)
+                    .setValue(this.plugin.settings.chat_send_chat_shortcut)
+                    .onChange(async (selected) => {
+                        this.plugin.settings.chat_send_chat_shortcut = selected;
 
-                    await this.plugin.saveSettings();
-                    await this.plugin.loadSettings();
-                });
-            });
-
-        new Setting(containerEl)
-            .setName("Canvas keybinds")
-            .setDesc("Select which keybinds will be used for canvas operations.")
-            .addText((text) => {
-                text.setPlaceholder("Enter canvas keybinds")
-                    .setValue(this.plugin.settings.canvas_keybinds)
-                    .onChange(async (value) => {
-                        this.plugin.settings.canvas_keybinds = value;
                         await this.plugin.saveSettings();
                         await this.plugin.loadSettings();
                     });
             });
+
+        // new Setting(containerEl)
+        //     .setName("Canvas keybinds")
+        //     .setDesc("Select which keybinds will be used for canvas operations.")
+        //     .addText((text) => {
+        //         text.setPlaceholder("Enter canvas keybinds")
+        //             .setValue(this.plugin.settings.canvas_keybinds)
+        //             .onChange(async (value) => {
+        //                 this.plugin.settings.canvas_keybinds = value;
+        //                 await this.plugin.saveSettings();
+        //                 await this.plugin.loadSettings();
+        //             });
+        //     });
     }
 
     display(): void {
@@ -322,8 +325,10 @@ export class CaretSettingTab extends PluginSettingTab {
         const apiTab = tabContainer.createEl("button", { text: "LLM APIs ", cls: "caret-tab" });
         const chatTab = tabContainer.createEl("button", { text: "Chat", cls: "caret-tab" });
 
-        const apiSettingsContainer = containerEl.createEl("div", { cls: "caret-api-settings-container hidden" });
-        const chatSettingsContainer = containerEl.createEl("div", { cls: "caret-chat-settings-container hidden" });
+        const apiSettingsContainer = containerEl.createEl("div", { cls: "caret-api-settings-container caret-hidden" });
+        const chatSettingsContainer = containerEl.createEl("div", {
+            cls: "caret-chat-settings-container caret-hidden",
+        });
 
         this.api_settings_tab(apiSettingsContainer);
         this.chat_settings_tab(chatSettingsContainer);
@@ -334,13 +339,13 @@ export class CaretSettingTab extends PluginSettingTab {
             .setDesc(`Caret Version: ${this.plugin.settings.caret_version}`);
 
         apiTab.addEventListener("click", () => {
-            apiSettingsContainer.classList.remove("hidden");
-            chatSettingsContainer.classList.add("hidden");
+            apiSettingsContainer.classList.remove("caret-hidden");
+            chatSettingsContainer.classList.add("caret-hidden");
         });
 
         chatTab.addEventListener("click", () => {
-            chatSettingsContainer.classList.remove("hidden");
-            apiSettingsContainer.classList.add("hidden");
+            chatSettingsContainer.classList.remove("caret-hidden");
+            apiSettingsContainer.classList.add("caret-hidden");
             // Placeholder for chat settings rendering function
             // this.chat_settings_tab(chatSettingsContainer);
         });
