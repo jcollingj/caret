@@ -2398,13 +2398,21 @@ version: 1
                     return true;
                 });
 
-                const body = {
+                interface AnthropicRequestBody {
+                    model: string;
+                    max_tokens: number;
+                    messages: any[];
+                    system?: string;
+                }
+
+                const body: AnthropicRequestBody = {
                     model: model,
                     max_tokens: 4096,
                     messages: conversation,
                 };
+
                 if (systemContent.length > 0) {
-                    body["system"] = systemContent;
+                    body.system = systemContent;
                 }
                 const headers = {
                     "x-api-key": this.settings.anthropic_api_key,
