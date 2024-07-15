@@ -159,9 +159,6 @@ const ChatComponent = forwardRef<
             // setIsGenerating(true);
             const user_message_tokens = plugin.encoder.encode(userMessage).length;
             if (user_message_tokens > plugin.settings.context_window) {
-                // new Notice(
-
-                // );
                 console.error(
                     `Single message exceeds model context window. Can't submit. Please shorten message and try again`
                 );
@@ -276,7 +273,7 @@ const ChatComponent = forwardRef<
                                 className="caret-chat-message-convert-to-note"
                             />
                             <div>
-                                <span className="caret-bulk-convert-label">Bulk Convert</span>
+                                <span className="caret-bulk-convert-label">Bulk convert</span>
                                 <input
                                     type="checkbox"
                                     checked={!!checkedMessages[index]}
@@ -322,7 +319,7 @@ const ChatComponent = forwardRef<
                             New Chat
                         </button>
                         {/* <button onClick={handleSave}>Save</button> */}
-                        <button onClick={bulkConvert}>Bulk Convert to Note</button>
+                        <button onClick={bulkConvert}>Bulk convert to note</button>
                     </div>
                 </div>
             </div>

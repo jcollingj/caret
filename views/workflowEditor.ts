@@ -91,7 +91,7 @@ export class LinearWorkflowEditor extends ItemView {
 
         // Add workflow name input
         const title_container = container.createEl("div", { cls: "caret-flex-row" });
-        title_container.createEl("h2", { text: `Workflow Name:`, cls: "caret-w-8" });
+        title_container.createEl("h2", { text: `Workflow name:`, cls: "caret-w-8" });
         const workflow_name_input = title_container.createEl("input", {
             type: "text",
             cls: "caret-workflow-name-input caret-w-full",
@@ -259,7 +259,7 @@ ${prompts_string}
             new Notice(`Workflow type set to ${this.workflow_type}`);
         });
 
-        this.prompt_container.createEl("h3", { text: "System Prompt" });
+        this.prompt_container.createEl("h3", { text: "System prompt" });
         const text_area = this.prompt_container.createEl("textarea", {
             cls: "caret-full_width_text_container",
             placeholder: "Add a system prompt",

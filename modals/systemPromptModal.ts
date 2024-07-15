@@ -12,7 +12,7 @@ export class SystemPromptModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
 
-        contentEl.createEl("h2", { text: "System Prompt" });
+        contentEl.createEl("h2", { text: "System prompt" });
 
         const textArea = contentEl.createEl("textarea", {
             cls: "system-prompt-modal-text-area", // Apply the CSS class here

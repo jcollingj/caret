@@ -167,7 +167,7 @@ export class CaretSettingTab extends PluginSettingTab {
             .setName("OpenAI API key")
             .setDesc("")
             .addText((text) => {
-                text.setPlaceholder("OpenAI API Key")
+                text.setPlaceholder("OpenAI API key")
                     .setValue(this.plugin.settings.openai_api_key)
                     .onChange(async (value: string) => {
                         this.plugin.settings.openai_api_key = value;
@@ -181,7 +181,7 @@ export class CaretSettingTab extends PluginSettingTab {
             .setName("Groq API key")
             .setDesc("")
             .addText((text) => {
-                text.setPlaceholder("Grok API Key")
+                text.setPlaceholder("Groq API key")
                     .setValue(this.plugin.settings.groq_api_key)
                     .onChange(async (value: string) => {
                         this.plugin.settings.groq_api_key = value;
@@ -194,7 +194,7 @@ export class CaretSettingTab extends PluginSettingTab {
             .setName("Anthropic API key")
             .setDesc("")
             .addText((text) => {
-                text.setPlaceholder("Anthropic API Key")
+                text.setPlaceholder("Anthropic API key")
                     .setValue(this.plugin.settings.anthropic_api_key)
                     .onChange(async (value: string) => {
                         this.plugin.settings.anthropic_api_key = value;
@@ -207,7 +207,7 @@ export class CaretSettingTab extends PluginSettingTab {
             .setName("OpenRouter API key")
             .setDesc("")
             .addText((text) => {
-                text.setPlaceholder("OpenRouter API Key")
+                text.setPlaceholder("OpenRouter API key")
                     .setValue(this.plugin.settings.open_router_key)
                     .onChange(async (value: string) => {
                         this.plugin.settings.open_router_key = value;
@@ -334,9 +334,7 @@ export class CaretSettingTab extends PluginSettingTab {
         this.chat_settings_tab(chatSettingsContainer);
 
         // LLM Provider Settings
-        new Setting(containerEl)
-            // .setName("LLM Provider")
-            .setDesc(`Caret Version: ${this.plugin.settings.caret_version}`);
+        new Setting(containerEl).setDesc(`Caret Version: ${this.plugin.settings.caret_version}`);
 
         apiTab.addEventListener("click", () => {
             apiSettingsContainer.classList.remove("caret-hidden");

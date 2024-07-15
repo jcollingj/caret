@@ -1,21 +1,10 @@
 // @ts-ignore
 import ollama from "ollama/browser";
 import { encodingForModel } from "js-tiktoken";
-// @ts-ignore
-// import pdfjs from "@bundled-es-modules/pdfjs-dist/build/pdf";
-// import pdf_worker_code from "./workers/pdf.worker.js";
-
 import OpenAI from "openai";
 import Groq from "groq-sdk";
 import Anthropic from "@anthropic-ai/sdk";
 import { around } from "monkey-around";
-
-// Create a Blob URL from the worker code
-// @ts-ignore
-// const pdf_worker_blob = new Blob([pdf_worker_code], { type: "application/javascript" });
-// const pdf_worker_url = URL.createObjectURL(pdf_worker_blob);
-// pdfjs.GlobalWorkerOptions.workerSrc = pdf_worker_url;
-
 import { Canvas, ViewportNode, Message, Node, Edge, SparkleConfig } from "./types";
 import {
     MarkdownView,
@@ -34,7 +23,6 @@ import { CanvasFileData, CanvasNodeData, CanvasTextData } from "obsidian/canvas"
 // Import all of the views, components, models, etc
 import { CaretSettingTab } from "./settings";
 import { CMDJModal } from "./modals/inlineEditingModal";
-import { InsertNoteModal } from "./modals/insertNoteModal";
 import { RemoveCustomModelModal } from "./modals/removeCustomModel";
 import { SystemPromptModal } from "./modals/systemPromptModal";
 import { redBackgroundField } from "./editorExtensions/inlineDiffs";
@@ -555,7 +543,7 @@ version: 1
                                         all_text += text + "\n";
                                         convo_total_tokens += text_token_length;
                                     } else {
-                                        new Notice("Context window exceeded - This is the message?");
+                                        new Notice("Context window exceeded");
                                         break;
                                     }
                                 } else if ("filePath" in obj) {
@@ -600,7 +588,7 @@ version: 1
                             // This handles the model ---
                             // Create a modal with a text input and a submit button
                             const modal = new Modal(this.app);
-                            modal.contentEl.createEl("h1", { text: "Canvas Prompt" });
+                            modal.contentEl.createEl("h1", { text: "Canvas prompt" });
                             const container = modal.contentEl.createDiv({ cls: "caret-flex-col" });
                             const text_area = container.createEl("textarea", {
                                 placeholder: "",
@@ -1430,7 +1418,7 @@ version: 1
     addNewNodeButton(menuEl: HTMLElement) {
         if (!menuEl.querySelector(".graph-menu-item")) {
             const graphButtonEl = createEl("button", "clickable-icon graph-menu-item");
-            setTooltip(graphButtonEl, "Create User Message", { placement: "top" });
+            setTooltip(graphButtonEl, "Create user message", { placement: "top" });
             setIcon(graphButtonEl, "lucide-workflow");
             graphButtonEl.addEventListener("click", async () => {
                 // Assuming canvasView is accessible here, or you need to pass it similarly
@@ -2100,7 +2088,7 @@ version: 1
                             current_node = assistant_node;
                         }
                     } else {
-                        new Notice("Invalid Caret Prompt");
+                        new Notice("Invalid Caret prompt");
                     }
 
                     return;
@@ -2359,7 +2347,7 @@ version: 1
             }
         } else if (provider == "openai") {
             if (!this.openai_client) {
-                const error_message = "API Key not configured for OpenAI. Restart the app if you just added it!";
+                const error_message = "API key not configured for OpenAI. Restart the app if you just added it!";
                 new Notice(error_message);
                 throw new Error(error_message);
             }
@@ -2382,7 +2370,7 @@ version: 1
             try {
                 if (!this.anthropic_client) {
                     const error_message =
-                        "API Key not configured for Anthropic.  Restart the app if you just added it!";
+                        "API key not configured for Anthropic.  Restart the app if you just added it!";
                     new Notice(error_message);
                     throw new Error(error_message);
                 }
@@ -2439,7 +2427,7 @@ version: 1
             }
         } else if (provider == "groq") {
             if (!this.groq_client) {
-                const error_message = "API Key not configured for Groq.  Restart the app if you just added it!";
+                const error_message = "API key not configured for Groq.  Restart the app if you just added it!";
                 new Notice(error_message);
                 throw new Error(error_message);
             }
@@ -2492,7 +2480,7 @@ version: 1
             }
         } else if (provider == "openai") {
             if (!this.openai_client) {
-                const error_message = "API Key not configured for OpenAI. Restart the app if you just added it!";
+                const error_message = "API key not configured for OpenAI. Restart the app if you just added it!";
                 new Notice(error_message);
                 throw new Error(error_message);
             }
@@ -2513,7 +2501,7 @@ version: 1
             }
         } else if (provider == "openrouter") {
             if (!this.openrouter_client) {
-                const error_message = "API Key not configured for OpenRouter. Restart the app if you just added it!";
+                const error_message = "API key not configured for OpenRouter. Restart the app if you just added it!";
                 new Notice(error_message);
                 throw new Error(error_message);
             }
@@ -2534,7 +2522,7 @@ version: 1
             }
         } else if (provider == "groq") {
             if (!this.groq_client) {
-                const error_message = "API Key not configured for Groq.  Restart the app if you just added it!";
+                const error_message = "API key not configured for Groq.  Restart the app if you just added it!";
                 new Notice(error_message);
                 throw new Error(error_message);
             }
@@ -2555,9 +2543,9 @@ version: 1
                 throw error;
             }
         } else if (provider == "anthropic") {
-            new Notice("Error: Anthropic Streaming not supported");
+            new Notice("Error: Anthropic streaming not supported");
         } else if (provider == "custom") {
-            new Notice("Calling Custom Client");
+            new Notice("Calling custom client");
             const custom_model = this.settings.model;
             const model_settings = this.settings.custom_endpoints[custom_model];
             const custom_api_key = model_settings.api_key;

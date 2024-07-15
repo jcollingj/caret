@@ -16,7 +16,7 @@ export class InsertNoteModal extends Modal {
         const all_files = this.app.vault.getFiles();
 
         const html_insert_files = contentEl.createEl("p", {
-            text: "Insert File",
+            text: "Insert file",
             cls: "caret-insert-file-header",
         });
 

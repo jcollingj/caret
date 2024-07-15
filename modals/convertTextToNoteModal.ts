@@ -20,7 +20,7 @@ export class ConvertTextToNoteModal extends Modal {
         contentEl.createEl("div", { text: `Converting ${this.messages.length} messages`, cls: "callout" });
 
         new Setting(contentEl)
-            .setName("File Name")
+            .setName("File name")
             .setDesc("Enter the name for the note.")
             .addText((text) => {
                 text.setValue(this.fileName).onChange((value) => {
@@ -29,7 +29,7 @@ export class ConvertTextToNoteModal extends Modal {
             });
 
         new Setting(contentEl)
-            .setName("Auto Format")
+            .setName("Auto format")
             .setDesc("Apply prompt formatting to the note.")
             .addToggle((toggle) => {
                 toggle.setValue(this.apply_formatting).onChange((value) => {
