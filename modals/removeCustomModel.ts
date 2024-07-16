@@ -19,7 +19,7 @@ export class RemoveCustomModelModal extends Modal {
         const table = contentEl.createEl("table", { cls: "caret-custom-models-table" });
         const headerRow = table.createEl("tr");
         headerRow.createEl("th", { text: "Name" });
-        headerRow.createEl("th", { text: "Context Window" });
+        headerRow.createEl("th", { text: "Context window" });
         headerRow.createEl("th", { text: "URL" });
         headerRow.createEl("th", { text: "Action" });
 
