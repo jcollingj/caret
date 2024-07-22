@@ -34,7 +34,7 @@ import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.43",
+    caret_version: "0.2.44",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -67,6 +67,13 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
             },
             "gpt-4o": {
                 name: "gpt-4o",
+                context_window: 128000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "gpt-4o-mini": {
+                name: "gpt-4o-mini",
                 context_window: 128000,
                 function_calling: true,
                 vision: true,
@@ -2104,6 +2111,9 @@ version: 1
         const node_content = ``;
         let x = node.x + node.width + xOffset;
         let y = node.y + yOffset;
+        // This is needed to work with the iterations. We still need to return the first node from the iterations
+        // So linear workflows works
+        let firstNode = null;
 
         for (let i = 0; i < iterations; i++) {
             const new_node = await this.createChildNode(canvas, node, x, y, node_content, "right", "left");
@@ -2130,9 +2140,13 @@ version: 1
                 const content = await this.llm_call(provider, model, conversation);
                 new_canvas_node.setText(content);
             }
+            if (i === 0) {
+                firstNode = new_canvas_node;
+            }
 
             y += yOffset + node.height;
         }
+        return firstNode;
     }
 
     async buildConversation(node: Node, nodes: Node[], edges: any[], system_prompt: string) {
@@ -2491,6 +2505,7 @@ version: 1
                 stream: true,
                 temperature: temperature,
             };
+            console.log({ params });
             try {
                 const stream = await this.openai_client.chat.completions.create(params);
                 return stream;
