@@ -68,7 +68,7 @@ export class CaretSettingTab extends PluginSettingTab {
                 const model_details = this.plugin.settings.llm_provider_options[llm_provider][model];
                 if (model_details && model_details.context_window) {
                     const context_window_value = model_details.context_window;
-                    context_window = parseInt(context_window_value.toLocaleString());
+                    context_window = parseInt(context_window_value.toString());
                 }
             }
         } catch (error) {
@@ -133,6 +133,7 @@ export class CaretSettingTab extends PluginSettingTab {
         }
 
         if (context_window) {
+            console.log({ context_window });
             setting.setDesc(`FYI your selected model has a context window of ${context_window}`);
         }
         if (this.plugin.settings.llm_provider === "ollama") {

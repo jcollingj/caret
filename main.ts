@@ -34,7 +34,7 @@ import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.44",
+    caret_version: "0.2.45",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -109,6 +109,23 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
                 vision: false,
                 streaming: true,
             },
+            // In preview, not accessiable yet
+            // "llama-3.1-405b-reasoning": {
+            //     name: "llama3.1-405b-reasoning",
+            //     context_window: 131072,
+            //     function_calling: true,
+            //     vision: true,
+            //     streaming: true,
+            // },
+
+            // Failed on first attempt. Need to add retry logic first.
+            // "llama3-groq-70b-8192-tool-use-preview": {
+            //     name: "llama3 Groq 70b Tool Use Preview",
+            //     context_window: 8192,
+            //     function_calling: true,
+            //     vision: true,
+            //     streaming: true,
+            // },
         },
         anthropic: {
             "claude-3-5-sonnet-20240620": {
@@ -180,6 +197,27 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
             "google/gemini-pro-1.5": {
                 name: "Gemini Pro 1.5",
                 context_window: 2800000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "meta-llama/llama-3.1-405b-instruct": {
+                name: "Llama3.1 405B Instruct",
+                context_window: 131072,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "meta-llama/llama-3.1-8b-instruct": {
+                name: "Llama3.1 8B Instruct",
+                context_window: 100000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "meta-llama/llama-3.1-70b-instruct": {
+                name: "Llama3.1 70B Instruct",
+                context_window: 100000,
                 function_calling: true,
                 vision: true,
                 streaming: true,
@@ -2461,6 +2499,27 @@ version: 1
                 new Notice(error.message);
                 throw error;
             }
+        } else if (provider == "openrouter") {
+            if (!this.openrouter_client) {
+                const error_message = "API key not configured for OpenRouter.  Restart the app if you just added it!";
+                new Notice(error_message);
+                throw new Error(error_message);
+            }
+            new Notice("Calling OpenRouter");
+
+            const params = {
+                messages: conversation,
+                model: model,
+            };
+            try {
+                const completion = await this.openrouter_client.chat.completions.create(params);
+                new Notice("Message back from OpenRouter");
+                const message = completion.choices[0].message as Message;
+            } catch (error) {
+                console.error("Error fetching chat completion from OpenAI:", error);
+                new Notice(error.message);
+                throw error;
+            }
         } else {
             const error_message = "Invalid llm provider / model configuration";
             new Notice(error_message);
@@ -2477,6 +2536,8 @@ version: 1
         if (provider === "ollama") {
             let model_param = model;
             new Notice("Calling ollama");
+            console.log("Calling ollama");
+            console.log({ conversation });
             try {
                 const response = await ollama.chat({
                     model: model_param,
