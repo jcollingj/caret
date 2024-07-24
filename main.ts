@@ -34,7 +34,7 @@ import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.45",
+    caret_version: "0.2.46",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -2528,6 +2528,7 @@ version: 1
         }
     }
     async llm_call_streaming(provider: string, model: string, conversation: any[], temperature: number) {
+        console.log(model);
         if (this.settings.system_prompt && this.settings.system_prompt.length > 0) {
             conversation.unshift({
                 role: "system",
@@ -2537,8 +2538,6 @@ version: 1
         if (provider === "ollama") {
             let model_param = model;
             new Notice("Calling ollama");
-            console.log("Calling ollama");
-            console.log({ conversation });
             try {
                 const response = await ollama.chat({
                     model: model_param,
