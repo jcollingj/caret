@@ -34,7 +34,7 @@ import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.46",
+    caret_version: "0.2.47",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -110,13 +110,20 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
                 streaming: true,
             },
             // In preview, not accessiable yet
-            // "llama-3.1-405b-reasoning": {
-            //     name: "llama3.1-405b-reasoning",
-            //     context_window: 131072,
-            //     function_calling: true,
-            //     vision: true,
-            //     streaming: true,
-            // },
+            "llama-3.1-8b-instant": {
+                name: "llama 3.1 8B Instant (Preview)",
+                context_window: 8000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "llama-3.1-70b-versatile": {
+                name: "llama 3.1 70B Versatile (Preview)",
+                context_window: 8000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
 
             // Failed on first attempt. Need to add retry logic first.
             // "llama3-groq-70b-8192-tool-use-preview": {
