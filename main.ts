@@ -2515,6 +2515,7 @@ version: 1
                 const completion = await this.openrouter_client.chat.completions.create(params);
                 new Notice("Message back from OpenRouter");
                 const message = completion.choices[0].message as Message;
+                return message.content;
             } catch (error) {
                 console.error("Error fetching chat completion from OpenAI:", error);
                 new Notice(error.message);
