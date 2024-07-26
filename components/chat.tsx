@@ -224,26 +224,41 @@ const ChatComponent = forwardRef<
     };
 
     const streamMessage = async (stream_response: any) => {
-        if (plugin.settings.llm_provider === "ollama") {
-            for await (const part of stream_response) {
-                setConversation((prev) => {
-                    const updated = [...prev];
-                    updated[updated.length - 1].content += part.message.content;
-                    return updated;
-                });
+        try {
+            if (plugin.settings.llm_provider === "ollama") {
+                console.log('using ollama');
+                let streamEnded = false;
+                for await (const part of stream_response) {
+                    if (part.done || part.success) {
+                        streamEnded = true;
+                        break;
+                    }
+                    setConversation((prev) => {
+                        const updated = [...prev];
+                        updated[updated.length - 1].content += part.message.content;
+                        return updated;
+                    });
+                }
+                if (!streamEnded) {
+                    throw new Error("Did not receive done or success response in stream.");
+                }
+            } else if (plugin.settings.llm_provider === "openai" || plugin.settings.llm_provider === "groq" || plugin.settings.llm_provider === "custom") {
+                for await (const part of stream_response) {
+                    const delta_content = part.choices[0]?.delta.content || "";
+                    setConversation((prev) => {
+                        const updated = [...prev];
+                        updated[updated.length - 1].content += delta_content;
+                        return updated;
+                    });
+                }
             }
-        }
-        if (plugin.settings.llm_provider === "openai" || "groq" || "custom") {
-            for await (const part of stream_response) {
-                const delta_content = part.choices[0]?.delta.content || "";
-                setConversation((prev) => {
-                    const updated = [...prev];
-                    updated[updated.length - 1].content += delta_content;
-                    return updated;
-                });
-            }
+        } catch (error) {
+            console.error("Error in streamMessage:", error);
+            throw new Error("Did not receive done or success response in stream.");
         }
     };
+
+
 
     const handleSubmit = async () => {
         if (!isGeneratingRef.current && textBoxValue.length > 0) {
