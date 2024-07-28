@@ -17,6 +17,7 @@ import {
     editorEditorField,
     addIcon,
     loadPdfJs,
+    TFile,
 } from "obsidian";
 import { CanvasFileData, CanvasNodeData, CanvasTextData } from "obsidian/canvas";
 
@@ -2074,13 +2075,26 @@ version: 1
                                 temperature: prompt_temperature,
                             };
 
+                            const prompt_trigger_linear = prompt.$?.trigger_linear_workflow || null;
+
                             const sparkle_promise = (async () => {
                                 if (prompt_delay > 0) {
                                     new Notice(`Waiting for ${prompt_delay} seconds...`);
                                     await new Promise((resolve) => setTimeout(resolve, prompt_delay * 1000));
                                     new Notice(`Done waiting for ${prompt_delay} seconds.`);
                                 }
-                                await this.sparkle(user_node.id, system_prompt, sparkle_config);
+                                const assistant_node = await this.sparkle(user_node.id, system_prompt, sparkle_config);
+
+                                if (prompt_trigger_linear) {
+                                    console.log(`Triggering linear workflow: ${prompt_trigger_linear}`);
+                                    try {
+                                        await this.executeLinearWorkflow(prompt_trigger_linear, canvas, assistant_node);
+                                        console.log(`Linear workflow execution completed: ${prompt_trigger_linear}`);
+                                    } catch (error) {
+                                        console.error(`Error executing linear workflow ${prompt_trigger_linear}:`, error);
+                                        new Notice(`Error in linear workflow: ${error.message}`);
+                                    }
+                                }
                             })();
 
                             sparkle_promises.push(sparkle_promise);
@@ -2192,6 +2206,123 @@ version: 1
             y += yOffset + node.height;
         }
         return firstNode;
+    }
+
+    async executeLinearWorkflow(fileName: string, canvas: Canvas, parentNode: CanvasNodeData) {
+        console.log(`Attempting to execute linear workflow: ${fileName}`);
+
+        // Prepend the /caret/workflows path to the fileName
+        const fullPath = `caret/workflows/${fileName}`;
+        console.log(`Looking for workflow file at: ${fullPath}`);
+
+        const file = this.app.vault.getAbstractFileByPath(fullPath);
+        if (!file || !(file instanceof TFile)) {
+            const error = `Linear workflow file not found or is not a file: ${fullPath}`;
+            console.error(error);
+            new Notice(error);
+            return;
+        }
+
+        console.log(`File found: ${fullPath}`);
+
+        try {
+            const content = await this.app.vault.read(file);
+            console.log(`File content read. Length: ${content.length}`);
+
+            const matchResult = content.match(/```xml([\s\S]*?)```/);
+            if (!matchResult) {
+                const error = `Incorrectly formatted linear workflow in file: ${fileName}`;
+                console.error(error);
+                new Notice(error);
+                return;
+            }
+
+            console.log(`XML content extracted. Length: ${matchResult[1].length}`);
+
+            const xml_content = matchResult[1].trim();
+            const xml = await this.parseXml(xml_content);
+            console.log(`XML parsed:`, xml);
+
+            const system_prompt_list = xml.root.system_prompt;
+            if (!system_prompt_list || system_prompt_list.length === 0) {
+                const error = `No system prompt found in linear workflow: ${fileName}`;
+                console.error(error);
+                new Notice(error);
+                return;
+            }
+
+            const system_prompt = system_prompt_list[0]._.trim();
+            console.log(`System prompt: ${system_prompt}`);
+
+            const prompts = xml.root.prompt;
+            if (!prompts || prompts.length === 0) {
+                const error = `No prompts found in linear workflow: ${fileName}`;
+                console.error(error);
+                new Notice(error);
+                return;
+            }
+
+            console.log(`Number of prompts: ${prompts.length}`);
+
+            let current_node = parentNode;
+            for (let i = 0; i < prompts.length; i++) {
+                console.log(`Processing prompt ${i + 1} of ${prompts.length}`);
+
+                const prompt = prompts[i];
+                const prompt_content = prompt._.trim();
+                const prompt_delay = prompt.$?.delay || 0;
+                const prompt_model = prompt.$?.model || "default";
+                const prompt_provider = prompt.$?.provider || "default";
+                const prompt_temperature = parseFloat(prompt.$?.temperature) || this.settings.temperature;
+                const new_node_content = `${prompt_content}`;
+                const x = current_node.x + current_node.width + 200;
+                const y = current_node.y;
+
+                console.log(`Creating user node at (${x}, ${y})`);
+                const user_node = await this.createChildNode(
+                    canvas,
+                    current_node,
+                    x,
+                    y,
+                    new_node_content,
+                    "right",
+                    "left"
+                );
+                if (!user_node) {
+                    console.error(`Failed to create user node for prompt ${i + 1}`);
+                    continue;
+                }
+
+                user_node.unknownData.role = "user";
+                user_node.unknownData.displayOverride = false;
+                const sparkle_config: SparkleConfig = {
+                    model: prompt_model,
+                    provider: prompt_provider,
+                    temperature: prompt_temperature,
+                };
+
+                if (prompt_delay > 0) {
+                    console.log(`Waiting for ${prompt_delay} seconds...`);
+                    await new Promise(resolve => setTimeout(resolve, prompt_delay * 1000));
+                    console.log(`Done waiting for ${prompt_delay} seconds.`);
+                }
+
+                console.log(`Calling sparkle for user node ${user_node.id}`);
+                const assistant_node = await this.sparkle(user_node.id, system_prompt, sparkle_config);
+                if (!assistant_node) {
+                    console.error(`Failed to create assistant node for prompt ${i + 1}`);
+                    continue;
+                }
+
+                current_node = assistant_node;
+                console.log(`Completed processing prompt ${i + 1}`);
+            }
+
+            console.log(`Linear workflow execution completed for: ${fileName}`);
+        } catch (error) {
+            console.error(`Error executing linear workflow ${fileName}:`, error);
+            new Notice(`Error executing linear workflow: ${error.message}`);
+        }
     }
 
     async buildConversation(node: Node, nodes: Node[], edges: any[], system_prompt: string) {
