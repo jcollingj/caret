@@ -128,6 +128,7 @@ export interface WorkflowPrompt {
     delay: string;
     temperature: string;
     prompt: string;
+    trigger_linear_workflow?: string;
 }
 export interface CaretPluginSettings {
     caret_version: string;

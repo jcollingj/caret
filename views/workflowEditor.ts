@@ -55,6 +55,7 @@ export class LinearWorkflowEditor extends ItemView {
                     const model = xml_prompts[i].$.model || "default";
                     const provider = xml_prompts[i].$.provider || "default";
                     const temperature = parseFloat(xml_prompts[i].$.temperature) || this.plugin.settings.temperature;
+                    const trigger_linear_workflow = xml_prompts[i].$.trigger_linear_workflow || ""; // Add this line
 
                     if (prompt.trim().length > 0) {
                         this.prompts.push({
@@ -63,6 +64,7 @@ export class LinearWorkflowEditor extends ItemView {
                             delay: delay.toString(),
                             temperature: temperature.toString(),
                             prompt,
+                            trigger_linear_workflow,
                         });
                     }
                 }
@@ -180,10 +182,13 @@ ${this.plugin.escapeXml(this.system_prompt)}
                 continue;
             }
             const escaped_content = this.plugin.escapeXml(this.prompts[i].prompt);
+            const trigger_attr = this.prompts[i].trigger_linear_workflow
+                ? ` trigger_linear_workflow="${this.prompts[i].trigger_linear_workflow}"`
+                : '';
             prompts_string += `
 <prompt model="${this.prompts[i].model || "default"}" provider="${this.prompts[i].provider || "default"}" delay="${
                 this.prompts[i].delay || "default"
-            }" temperature="${this.prompts[i].temperature || "default"}">
+            }" temperature="${this.prompts[i].temperature || "default"}"${trigger_attr}>
 ${escaped_content}
 </prompt>`.trim();
         }
@@ -272,7 +277,14 @@ ${prompts_string}
     }
 
     add_prompt(
-        prompt: WorkflowPrompt = { model: "default", provider: "default", delay: "0", temperature: "1", prompt: "" },
+        prompt: WorkflowPrompt = {
+            model: "default",
+            provider: "default",
+            delay: "0",
+            temperature: "1",
+            prompt: "",
+            trigger_linear_workflow: ""
+        },
         loading_prompt: boolean = false,
         index: number | null = null
     ) {
@@ -390,6 +402,18 @@ ${prompts_string}
             value: prompt.delay,
         });
 
+        // After the delay input, add a new input for trigger_linear_workflow
+        const trigger_workflow_label = options_container.createEl("label", {
+            text: "Trigger Linear Workflow",
+            cls: "caret-row_items_spacing",
+        });
+        const trigger_workflow_input = options_container.createEl("input", {
+            type: "text",
+            cls: "caret-trigger_workflow_input caret-row_items_spacing",
+            value: prompt.trigger_linear_workflow || "",
+            placeholder: "Enter filename (optional)",
+        });
+
         if (!loading_prompt) {
             this.prompts.push({
                 model: provider_select.value,
@@ -405,6 +429,7 @@ ${prompts_string}
         model_select.id = `model_select_id_${array_index}`;
         temperature_input.id = `temperature_input_id_${array_index}`;
         delay_input.id = `delay_input_id_${array_index}`;
+        trigger_workflow_input.id = `trigger_workflow_input_id_${array_index}`;
 
         text_area.addEventListener("input", () => {
             const text_area_element = this.prompt_container.querySelector(`#text_area_id_${array_index}`);
@@ -441,6 +466,15 @@ ${prompts_string}
             const delay_input_element = this.prompt_container.querySelector(`#delay_input_id_${array_index}`);
             if (delay_input_element) {
                 this.prompts[array_index].delay = delay_input.value;
+            }
+        });
+
+        trigger_workflow_input.addEventListener("input", () => {
+            const trigger_workflow_input_element = this.prompt_container.querySelector(
+                `#trigger_workflow_input_id_${array_index}`
+            );
+            if (trigger_workflow_input_element) {
+                this.prompts[array_index].trigger_linear_workflow = trigger_workflow_input.value;
             }
         });
     }
