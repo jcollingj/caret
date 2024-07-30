@@ -147,4 +147,5 @@ export interface CaretPluginSettings {
     temperature: number;
     llm_provider_options: LLMProviderOptions;
     provider_dropdown_options: { [key: string]: string };
+    include_nested_block_refs: boolean;
 }

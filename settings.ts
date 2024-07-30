@@ -301,6 +301,17 @@ export class CaretSettingTab extends PluginSettingTab {
                     });
             });
 
+        new Setting(containerEl)
+            .setName("Use nested [[]] content")
+            .setDesc("When set to true, context will include 1 layer of block refs")
+            .addToggle((toggle) => {
+                toggle.setValue(this.plugin.settings.include_nested_block_refs).onChange(async (value: boolean) => {
+                    this.plugin.settings.include_nested_block_refs = value;
+                    await this.plugin.saveSettings();
+                    await this.plugin.loadSettings();
+                });
+            });
+
         // new Setting(containerEl)
         //     .setName("Canvas keybinds")
         //     .setDesc("Select which keybinds will be used for canvas operations.")

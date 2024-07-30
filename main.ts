@@ -34,7 +34,7 @@ import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.48",
+    caret_version: "0.2.49",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -270,6 +270,7 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
         openrouter: "OpenRouter",
         custom: "Custom",
     },
+    include_nested_block_refs: true,
 };
 
 export default class CaretPlugin extends Plugin {
@@ -326,6 +327,15 @@ export default class CaretPlugin extends Plugin {
             name: "Add custom models",
             callback: () => {
                 new CustomModelModal(this.app, this).open();
+            },
+        });
+        // Add Commands.
+        this.addCommand({
+            id: "toggle-nested-block-refs",
+            name: "Toggle Including Nested Block Refs",
+            callback: async () => {
+                this.settings.include_nested_block_refs = !this.settings.include_nested_block_refs;
+                await this.saveSettings();
             },
         });
 
@@ -1136,6 +1146,8 @@ version: 1
                                     } else if (node.unknownData.role === "system") {
                                         customDisplayDiv.textContent = "🖥️";
                                     } else if (node.unknownData.role === "cleared") {
+                                        node.unknownData.role = "";
+
                                         customDisplayDiv.textContent = "";
                                         customDisplayDiv.remove();
                                         // customDisplayDiv.remove();
@@ -1826,8 +1838,10 @@ version: 1
                         const role = ancestor.role || "";
                         if (role.length === 0) {
                             let ancestor_text = ancestor.text;
-                            const block_ref_content = await this.getRefBlocksContent(ancestor_text);
-                            ancestor_text += block_ref_content;
+                            if (this.settings.include_nested_block_refs) {
+                                const block_ref_content = await this.getRefBlocksContent(ancestor_text);
+                                ancestor_text += block_ref_content;
+                            }
                             contextToAdd += ancestor_text;
                         }
                     } else if (ancestor.type === "file" && ancestor.file && ancestor.file.includes(".md")) {
@@ -1941,8 +1955,10 @@ version: 1
                 if (node.role === "") {
                     if (node.type === "text") {
                         nodeContent = node.text;
-                        const block_ref_content = await this.getRefBlocksContent(node.text);
-                        nodeContent += block_ref_content;
+                        if (this.settings.include_nested_block_refs) {
+                            const block_ref_content = await this.getRefBlocksContent(node.text);
+                            nodeContent += block_ref_content;
+                        }
                     } else if (node.type === "file") {
                         if (node.file && node.file.includes(".md")) {
                             const file = this.app.vault.getFileByPath(node.file);
@@ -2195,6 +2211,7 @@ version: 1
     }
 
     async buildConversation(node: Node, nodes: Node[], edges: any[], system_prompt: string) {
+        console.log(node, nodes);
         const longest_lineage = CaretPlugin.getLongestLineage(nodes, edges, node.id);
 
         const conversation = [];
@@ -2206,9 +2223,11 @@ version: 1
             const node = longest_lineage[i];
 
             let node_context = await this.getAssociatedNodeContent(node, nodes, edges);
-            const block_ref_content = await this.getRefBlocksContent(node_context);
-            if (block_ref_content.length > 0) {
-                node_context += `\n${block_ref_content}`;
+            if (this.settings.include_nested_block_refs) {
+                const block_ref_content = await this.getRefBlocksContent(node_context);
+                if (block_ref_content.length > 0) {
+                    node_context += `\n${block_ref_content}`;
+                }
             }
             if (node_context.length > 0) {
                 node_context += `\n${node_context}`;
@@ -2219,11 +2238,21 @@ version: 1
             let role = node.role || "";
             if (role === "user") {
                 let content = node.text;
+                if (node.type === "file") {
+                    const file = this.app.vault.getFileByPath("Recipes/Shakshuka.md");
+                    if (file) {
+                        content = await this.app.vault.cachedRead(file);
+                        console.log({ content, marker: 1 });
+                    }
+                }
                 // Only for the first node
                 // And get referencing content here.
-                const block_ref_content = await this.getRefBlocksContent(content);
-                if (block_ref_content.length > 0) {
-                    content += `\n${block_ref_content}`;
+                if (this.settings.include_nested_block_refs) {
+                    const block_ref_content = await this.getRefBlocksContent(content);
+                    if (block_ref_content.length > 0) {
+                        console.log(block_ref_content);
+                        content += `\n${block_ref_content}`;
+                    }
                 }
                 if (node_context.length > 0) {
                     content += `\n${node_context}`;

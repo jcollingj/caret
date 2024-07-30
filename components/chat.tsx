@@ -186,10 +186,11 @@ const ChatComponent = forwardRef<
             if (modified_content.length === 0) {
                 continue;
             }
-
-            const block_ref_content = await plugin.getRefBlocksContent(modified_content);
-            if (block_ref_content.length > 0) {
-                modified_content += `Referenced content:\n${block_ref_content}`;
+            if (plugin.settings.include_nested_block_refs) {
+                const block_ref_content = await plugin.getRefBlocksContent(modified_content);
+                if (block_ref_content.length > 0) {
+                    modified_content += `Referenced content:\n${block_ref_content}`;
+                }
             }
 
             const encoded_message = plugin.encoder.encode(modified_content);
@@ -226,7 +227,7 @@ const ChatComponent = forwardRef<
     const streamMessage = async (stream_response: any) => {
         try {
             if (plugin.settings.llm_provider === "ollama") {
-                console.log('using ollama');
+                console.log("using ollama");
                 let streamEnded = false;
                 for await (const part of stream_response) {
                     if (part.done || part.success) {
@@ -242,7 +243,11 @@ const ChatComponent = forwardRef<
                 if (!streamEnded) {
                     throw new Error("Did not receive done or success response in stream.");
                 }
-            } else if (plugin.settings.llm_provider === "openai" || plugin.settings.llm_provider === "groq" || plugin.settings.llm_provider === "custom") {
+            } else if (
+                plugin.settings.llm_provider === "openai" ||
+                plugin.settings.llm_provider === "groq" ||
+                plugin.settings.llm_provider === "custom"
+            ) {
                 for await (const part of stream_response) {
                     const delta_content = part.choices[0]?.delta.content || "";
                     setConversation((prev) => {
@@ -257,8 +262,6 @@ const ChatComponent = forwardRef<
             throw new Error("Did not receive done or success response in stream.");
         }
     };
-
-
 
     const handleSubmit = async () => {
         if (!isGeneratingRef.current && textBoxValue.length > 0) {
