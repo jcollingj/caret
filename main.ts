@@ -2211,7 +2211,6 @@ version: 1
     }
 
     async buildConversation(node: Node, nodes: Node[], edges: any[], system_prompt: string) {
-        console.log(node, nodes);
         const longest_lineage = CaretPlugin.getLongestLineage(nodes, edges, node.id);
 
         const conversation = [];
@@ -2242,7 +2241,6 @@ version: 1
                     const file = this.app.vault.getFileByPath("Recipes/Shakshuka.md");
                     if (file) {
                         content = await this.app.vault.cachedRead(file);
-                        console.log({ content, marker: 1 });
                     }
                 }
                 // Only for the first node
@@ -2250,7 +2248,6 @@ version: 1
                 if (this.settings.include_nested_block_refs) {
                     const block_ref_content = await this.getRefBlocksContent(content);
                     if (block_ref_content.length > 0) {
-                        console.log(block_ref_content);
                         content += `\n${block_ref_content}`;
                     }
                 }
@@ -2564,7 +2561,7 @@ version: 1
         }
     }
     async llm_call_streaming(provider: string, model: string, conversation: any[], temperature: number) {
-        console.log(model);
+        console.log({ model, conversation, provider });
         if (this.settings.system_prompt && this.settings.system_prompt.length > 0) {
             conversation.unshift({
                 role: "system",
@@ -2602,7 +2599,7 @@ version: 1
                 stream: true,
                 temperature: temperature,
             };
-            console.log({ params });
+
             try {
                 const stream = await this.openai_client.chat.completions.create(params);
                 return stream;
