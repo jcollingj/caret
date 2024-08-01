@@ -34,7 +34,7 @@ import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.50",
+    caret_version: "0.2.51",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -231,6 +231,13 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
             },
         },
         ollama: {
+            "llama3.1": {
+                name: "llama3.1 8B",
+                context_window: 131072,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
             llama3: {
                 name: "llama3 8B",
                 context_window: 8192,
@@ -254,6 +261,13 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
             },
             gemma: {
                 name: "Gemma 7B",
+                context_window: 8192,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
+            gemma2: {
+                name: "Gemma 2",
                 context_window: 8192,
                 function_calling: false,
                 vision: false,
