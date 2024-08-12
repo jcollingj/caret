@@ -34,7 +34,7 @@ import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.51",
+    caret_version: "0.2.52",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -1521,7 +1521,7 @@ version: 1
     addExtraActions(menuEl: HTMLElement) {
         if (!menuEl.querySelector(".wand")) {
             const graphButtonEl = createEl("button", "clickable-icon wand");
-            setTooltip(graphButtonEl, "Actions", { placement: "top" });
+            // setTooltip(graphButtonEl, "Actions", { placement: "top" });
             setIcon(graphButtonEl, "lucide-wand");
 
             interface SubmenuItemConfig {
@@ -2127,8 +2127,10 @@ version: 1
                         const xml_content = matchResult[1].trim();
                         const xml = await this.parseXml(xml_content);
                         const system_prompt_list = xml.root.system_prompt;
-
-                        const system_prompt = system_prompt_list[0]._.trim();
+                        let system_prompt;
+                        if (system_prompt_list[0]._) {
+                            system_prompt = system_prompt_list[0]._.trim();
+                        }
 
                         const prompts = xml.root.prompt;
 
