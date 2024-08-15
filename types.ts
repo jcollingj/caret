@@ -93,6 +93,7 @@ export interface SparkleConfig {
     model: string;
     provider: string;
     temperature: number;
+    context_window: string | number;
 }
 
 export interface Models {

@@ -34,7 +34,7 @@ import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.52",
+    caret_version: "0.2.53",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -1612,6 +1612,7 @@ version: 1
                                 model: "default",
                                 provider: "default",
                                 temperature: 1,
+                                context_window: "default",
                             });
                         },
                     },
@@ -2015,6 +2016,7 @@ version: 1
             model: "default",
             provider: "default",
             temperature: 1,
+            context_window: "default",
         },
         iterations: number = 1,
         xOffset: number = 200,
@@ -2095,13 +2097,18 @@ version: 1
                                 "right",
                                 "left"
                             );
+                            const model_context_window =
+                                this.settings.llm_provider_options[prompt_provider]?.[prompt_model]?.context_window ||
+                                this.settings.context_window;
                             user_node.unknownData.role = "user";
                             user_node.unknownData.displayOverride = false;
+                            console.log({ model_context_window });
 
                             const sparkle_config: SparkleConfig = {
                                 model: prompt_model,
                                 provider: prompt_provider,
                                 temperature: prompt_temperature,
+                                context_window: model_context_window,
                             };
 
                             const sparkle_promise = (async () => {
@@ -2156,12 +2163,16 @@ version: 1
                                 "right",
                                 "left"
                             );
+                            const model_context_window =
+                                this.settings.llm_provider_options[prompt_provider]?.[prompt_model]?.context_window ||
+                                this.settings.context_window;
                             user_node.unknownData.role = "user";
                             user_node.unknownData.displayOverride = false;
                             const sparkle_config: SparkleConfig = {
                                 model: prompt_model,
                                 provider: prompt_provider,
                                 temperature: prompt_temperature,
+                                context_window: model_context_window,
                             };
                             if (prompt_delay > 0) {
                                 new Notice(`Waiting for ${prompt_delay} seconds...`);
@@ -2181,8 +2192,15 @@ version: 1
                 console.error("File not found or is not a readable file:", file_path);
             }
         }
+        let context_window = sparkle_config.context_window;
+        if (sparkle_config.context_window === "default") {
+            context_window = this.settings.context_window;
+        }
+        if (typeof context_window !== "number" || isNaN(context_window)) {
+            throw new Error("Invalid context window: must be a number");
+        }
 
-        const { conversation } = await this.buildConversation(node, nodes, edges, local_system_prompt);
+        const { conversation } = await this.buildConversation(node, nodes, edges, local_system_prompt, context_window);
         const { model, provider, temperature } = this.mergeSettingsAndSparkleConfig(sparkle_config);
 
         const node_content = ``;
@@ -2226,7 +2244,7 @@ version: 1
         return firstNode;
     }
 
-    async buildConversation(node: Node, nodes: Node[], edges: any[], system_prompt: string) {
+    async buildConversation(node: Node, nodes: Node[], edges: any[], system_prompt: string, context_window: number) {
         const longest_lineage = CaretPlugin.getLongestLineage(nodes, edges, node.id);
 
         const conversation = [];
@@ -2273,7 +2291,7 @@ version: 1
 
                 if (content && content.length > 0) {
                     const user_message_tokens = this.encoder.encode(content).length;
-                    if (user_message_tokens + convo_total_tokens > settings.context_window) {
+                    if (user_message_tokens + convo_total_tokens > context_window) {
                         new Notice("Exceeding context window while adding user message. Trimming content");
                         break;
                     }
@@ -2318,6 +2336,7 @@ version: 1
         let model = settings.model;
         let provider = settings.llm_provider;
         let temperature = settings.temperature;
+        let context_window: string | number = settings.context_window;
         if (sparkle_config.model !== "default") {
             model = sparkle_config.model;
         }
@@ -2327,7 +2346,10 @@ version: 1
         if (sparkle_config.temperature !== settings.temperature) {
             temperature = sparkle_config.temperature;
         }
-        const mergedOutput = { model, provider, temperature };
+        if (sparkle_config.context_window !== "default") {
+            context_window = sparkle_config.context_window;
+        }
+        const mergedOutput = { model, provider, temperature, context_window };
 
         return mergedOutput;
     }
@@ -2339,6 +2361,7 @@ version: 1
             model: "default",
             provider: "default",
             temperature: 1,
+            context_window: "default",
         }
     ) {
         const caret_canvas = CaretCanvas.fromPlugin(this);
@@ -2346,12 +2369,20 @@ version: 1
 
         const longest_lineage = refreshed_node.getLongestLineage();
         const parent_node = longest_lineage[1];
+        let context_window: string | number = this.settings.context_window;
+        if (sparkle_config.context_window !== "default") {
+            context_window = sparkle_config.context_window;
+        }
+        if (typeof context_window !== "number" || isNaN(context_window)) {
+            throw new Error("Invalid context window: must be a number");
+        }
 
         const { conversation } = await this.buildConversation(
             parent_node,
             caret_canvas.nodes,
             caret_canvas.edges,
-            system_prompt
+            system_prompt,
+            context_window
         );
         const { provider, model, temperature } = this.mergeSettingsAndSparkleConfig(sparkle_config);
 
