@@ -24,12 +24,14 @@ import { CanvasFileData, CanvasNodeData, CanvasTextData } from "obsidian/canvas"
 import { CaretSettingTab } from "./settings";
 import { CMDJModal } from "./modals/inlineEditingModal";
 import { RemoveCustomModelModal } from "./modals/removeCustomModel";
+import { ResearchModal } from "./modals/researcherModal";
 import { SystemPromptModal } from "./modals/systemPromptModal";
 import { redBackgroundField } from "./editorExtensions/inlineDiffs";
 import { NewNode, CaretPluginSettings } from "./types";
 import { CustomModelModal } from "./modals/addCustomModel";
 import { LinearWorkflowEditor } from "./views/workflowEditor";
 import { FullPageChat, VIEW_CHAT } from "./views/chat";
+import { CaretCanvasView, VIEW_CARET_CANVAS } from "./views/CaretCanvasView";
 import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 
@@ -341,6 +343,13 @@ export default class CaretPlugin extends Plugin {
             name: "Add custom models",
             callback: () => {
                 new CustomModelModal(this.app, this).open();
+            },
+        });
+        this.addCommand({
+            id: "worker-research",
+            name: "Worker - Research",
+            callback: () => {
+                new ResearchModal(this.app, this).open();
             },
         });
         // Add Commands.
@@ -897,6 +906,7 @@ version: 1
         // Currently not using the sidebar chat.
         // this.registerView(VIEW_NAME_SIDEBAR_CHAT, (leaf) => new SidebarChat(leaf));
         this.registerView(VIEW_CHAT, (leaf) => new FullPageChat(this, leaf));
+        this.registerView(VIEW_CARET_CANVAS, (leaf) => new CaretCanvasView(this, leaf));
     }
 
     // General functions that the plugin uses
@@ -2896,6 +2906,14 @@ version: 1
     }
 
     addChatIconToRibbon() {
+        this.addRibbonIcon("message-square", "Caret Chat", async (evt) => {
+            await this.app.workspace.getLeaf(true).setViewState({
+                type: VIEW_CHAT,
+                active: true,
+            });
+        });
+    }
+    addCaretCanvasIcon() {
         this.addRibbonIcon("message-square", "Caret Chat", async (evt) => {
             await this.app.workspace.getLeaf(true).setViewState({
                 type: VIEW_CHAT,
