@@ -246,7 +246,8 @@ const ChatComponent = forwardRef<
             } else if (
                 plugin.settings.llm_provider === "openai" ||
                 plugin.settings.llm_provider === "groq" ||
-                plugin.settings.llm_provider === "custom"
+                plugin.settings.llm_provider === "custom" ||
+                plugin.settings.llm_provider === "openrouter"
             ) {
                 for await (const part of stream_response) {
                     const delta_content = part.choices[0]?.delta.content || "";

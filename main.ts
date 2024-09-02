@@ -24,7 +24,7 @@ import { CanvasFileData, CanvasNodeData, CanvasTextData } from "obsidian/canvas"
 import { CaretSettingTab } from "./settings";
 import { CMDJModal } from "./modals/inlineEditingModal";
 import { RemoveCustomModelModal } from "./modals/removeCustomModel";
-import { ResearchModal } from "./modals/researcherModal";
+// import { ResearchModal } from "./modals/researcherModal";
 import { SystemPromptModal } from "./modals/systemPromptModal";
 import { redBackgroundField } from "./editorExtensions/inlineDiffs";
 import { NewNode, CaretPluginSettings } from "./types";
@@ -36,7 +36,7 @@ import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.54",
+    caret_version: "0.2.55",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -210,6 +210,13 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
                 vision: true,
                 streaming: true,
             },
+            "google/gemini-flash-1.5-exp": {
+                name: "Gemini Flash 1.5 Experimental",
+                context_window: 4000000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
             "meta-llama/llama-3.1-405b-instruct": {
                 name: "Llama3.1 405B Instruct",
                 context_window: 131072,
@@ -345,13 +352,13 @@ export default class CaretPlugin extends Plugin {
                 new CustomModelModal(this.app, this).open();
             },
         });
-        this.addCommand({
-            id: "worker-research",
-            name: "Worker - Research",
-            callback: () => {
-                new ResearchModal(this.app, this).open();
-            },
-        });
+        // this.addCommand({
+        //     id: "worker-research",
+        //     name: "Worker - Research",
+        //     callback: () => {
+        //         new ResearchModal(this.app, this).open();
+        //     },
+        // });
         // Add Commands.
         this.addCommand({
             id: "toggle-nested-block-refs",
@@ -2671,7 +2678,7 @@ version: 1
                 new Notice(error_message);
                 throw new Error(error_message);
             }
-            new Notice("Calling OpenRouter");
+            new Notice("Calling OpenRouter - Here");
             const params = {
                 messages: conversation,
                 model: model,
