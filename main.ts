@@ -35,7 +35,7 @@ import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.57",
+    caret_version: "0.2.58",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -2676,7 +2676,7 @@ version: 1
                 new Notice(error_message);
                 throw new Error(error_message);
             }
-            new Notice("Calling OpenRouter - Here");
+            new Notice("Calling OpenRouter");
             const params = {
                 messages: conversation,
                 model: model,
