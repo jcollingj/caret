@@ -36,7 +36,7 @@ import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.55",
+    caret_version: "0.2.56",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
