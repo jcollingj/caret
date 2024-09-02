@@ -31,12 +31,11 @@ import { NewNode, CaretPluginSettings } from "./types";
 import { CustomModelModal } from "./modals/addCustomModel";
 import { LinearWorkflowEditor } from "./views/workflowEditor";
 import { FullPageChat, VIEW_CHAT } from "./views/chat";
-import { CaretCanvasView, VIEW_CARET_CANVAS } from "./views/CaretCanvasView";
 import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.56",
+    caret_version: "0.2.54",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -913,7 +912,6 @@ version: 1
         // Currently not using the sidebar chat.
         // this.registerView(VIEW_NAME_SIDEBAR_CHAT, (leaf) => new SidebarChat(leaf));
         this.registerView(VIEW_CHAT, (leaf) => new FullPageChat(this, leaf));
-        this.registerView(VIEW_CARET_CANVAS, (leaf) => new CaretCanvasView(this, leaf));
     }
 
     // General functions that the plugin uses
