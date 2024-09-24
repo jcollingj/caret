@@ -32,10 +32,11 @@ import { CustomModelModal } from "./modals/addCustomModel";
 import { LinearWorkflowEditor } from "./views/workflowEditor";
 import { FullPageChat, VIEW_CHAT } from "./views/chat";
 import { CaretCanvas } from "./caret_canvas";
+import test from "node:test";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.58",
+    caret_version: "0.2.59",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -2051,6 +2052,7 @@ version: 1
             console.error("Node not found with ID:", node_id);
             return;
         }
+
         node.unknownData.role = "user";
 
         const canvas_data = canvas.getData();
@@ -2117,7 +2119,6 @@ version: 1
                                 this.settings.context_window;
                             user_node.unknownData.role = "user";
                             user_node.unknownData.displayOverride = false;
-                            console.log({ model_context_window });
 
                             const sparkle_config: SparkleConfig = {
                                 model: prompt_model,
@@ -2286,8 +2287,8 @@ version: 1
             let role = node.role || "";
             if (role === "user") {
                 let content = node.text;
-                if (node.type === "file") {
-                    const file = this.app.vault.getFileByPath("Recipes/Shakshuka.md");
+                if (node.type === "file" && node.file) {
+                    const file = this.app.vault.getFileByPath(node.file);
                     if (file) {
                         content = await this.app.vault.cachedRead(file);
                     }
@@ -2623,7 +2624,6 @@ version: 1
         }
     }
     async llm_call_streaming(provider: string, model: string, conversation: any[], temperature: number) {
-        console.log({ model, conversation, provider });
         if (this.settings.system_prompt && this.settings.system_prompt.length > 0) {
             conversation.unshift({
                 role: "system",
