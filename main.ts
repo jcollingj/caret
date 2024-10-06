@@ -32,11 +32,10 @@ import { CustomModelModal } from "./modals/addCustomModel";
 import { LinearWorkflowEditor } from "./views/workflowEditor";
 import { FullPageChat, VIEW_CHAT } from "./views/chat";
 import { CaretCanvas } from "./caret_canvas";
-import test from "node:test";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.59",
+    caret_version: "0.2.60",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -1694,7 +1693,9 @@ version: 1
                     node &&
                     this.settings.llm_provider_options[this.settings.llm_provider][this.settings.model]
                         .function_calling &&
-                    (node.text || node.unknownData.type == "text")
+                    node.text
+                    //  ||
+                    // node.unknownData.type == "text"
                 ) {
                     submenuConfigs.push({
                         name: "Node Splitter",
