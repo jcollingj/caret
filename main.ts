@@ -1752,6 +1752,65 @@ version: 1
                             }
                         },
                     });
+                    submenuConfigs.push({
+                        name: "Node Splitter with connectors",
+                        icon: "lucide-split",
+                        tooltip: "Split node and link to parent",
+                        callback: async () => {
+                            const content = node.text || node.unknownData.text;
+
+                            const llm_prompt = {
+                                role: "user",
+                                content: `Split the following text into chunks. You must always split into chunks. Each chunk should aim to contain all of a logical section. Return the chunks as a list of strings with no other text.
+                            Example of expected output format: ["Chunk 1", "Chunk 2", "Chunk 3"]
+                            Text: ${content}`,
+                            };
+
+                            const split_content = await this.llm_call(this.settings.llm_provider, this.settings.model, [
+                                llm_prompt,
+                            ]);
+
+                            let split_content_array = [];
+                            try {
+                                // attempt to parse the response
+                                split_content_array = JSON.parse(split_content);
+                            } catch (error) {
+                                console.error("Parsing error:", error);
+                                new Notice("Node is unable to be split");
+                                return;
+                            }
+
+                            const newX = node.x + node.width + 50;
+                            const totalHeight = (300 + 100) * split_content_array.length - 100;
+                            const startY = node.y + node.height / 2 - totalHeight / 2;
+                            let newY = startY;
+
+                            for (const content of split_content_array) {
+                                let newId = this.generateRandomId(16);
+
+                                try {
+                                    const newNodeTemp = await this.addNodeToCanvas(canvas, newId, {
+                                        x: newX,
+                                        y: newY,
+                                        width: node.width,
+                                        height: 300,
+                                        type: "text",
+                                        content: content,
+                                    });
+                                    const newNode = canvas.nodes?.get(newNodeTemp?.id!);
+                                    if (newNode) {
+                                        // Add a link from the original node to the new node
+                                        await this.createEdge(node,newNode, canvas,  "right");
+                                    }
+                                    canvas.requestFrame();
+                                } catch (error) {
+                                    console.error("Failed to add node to canvas:", error);
+                                    new Notice("Failed to create node");
+                                }
+                                newY += 350;
+                            }
+                        },
+                    });
                 }
                 let submenuEl = createSubmenu(submenuConfigs);
 
