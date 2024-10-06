@@ -1762,7 +1762,7 @@ version: 1
                             const llm_prompt = {
                                 role: "user",
                                 content: `Split the following text into chunks. You must always split into chunks. Each chunk should aim to contain all of a logical section. Return the chunks as a list of strings with no other text.
-                            Example of expected output format: ["Chunk 1", "Chunk 2", "Chunk 3"]
+                            Example of expected output format: ["Chunk 1", "Chunk 2", "Chunk 3"]. Don't output any characters before [ and after]
                             Text: ${content}`,
                             };
 
@@ -1773,14 +1773,17 @@ version: 1
                             let split_content_array = [];
                             try {
                                 // attempt to parse the response
-                                split_content_array = JSON.parse(split_content);
+                                 // Use a regular expression to extract the content within square brackets
+                                const cleaned_content = split_content.replace(/^\s*```json|```\s*$/g, '').trim();
+
+                                split_content_array = JSON.parse(cleaned_content);
                             } catch (error) {
                                 console.error("Parsing error:", error);
                                 new Notice("Node is unable to be split");
                                 return;
                             }
 
-                            const newX = node.x + node.width + 50;
+                            const newX = node.x + node.width + 150;
                             const totalHeight = (300 + 100) * split_content_array.length - 100;
                             const startY = node.y + node.height / 2 - totalHeight / 2;
                             let newY = startY;
