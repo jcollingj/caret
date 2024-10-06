@@ -1754,7 +1754,7 @@ version: 1
                     });
                     submenuConfigs.push({
                         name: "Node Splitter with connectors",
-                        icon: "lucide-split",
+                        icon: "lucide-share-2",
                         tooltip: "Split node and link to parent",
                         callback: async () => {
                             const content = node.text || node.unknownData.text;
