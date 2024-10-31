@@ -35,7 +35,7 @@ import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.61",
+    caret_version: "0.2.62",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -79,6 +79,20 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
                 function_calling: true,
                 vision: true,
                 streaming: true,
+            },
+            "o1-preview": {
+                name: "o1-preview",
+                context_window: 128000,
+                function_calling: false,
+                vision: false,
+                streaming: false,
+            },
+            "o1-mini": {
+                name: "o1-mini",
+                context_window: 128000,
+                function_calling: false,
+                vision: false,
+                streaming: false,
             },
         },
         groq: {
@@ -2302,6 +2316,10 @@ version: 1
                 new_canvas_node.unknownData.displayOverride = false;
             }
             new_canvas_node.unknownData.role = "assistant";
+            console.log("Here:");
+            console.log({ provider, model });
+            console.log(this.settings.llm_provider_options[provider]);
+            console.log(this.settings.llm_provider_options[provider][model].streaming);
 
             if (this.settings.llm_provider_options[provider][model].streaming) {
                 const stream = await this.llm_call_streaming(provider, model, conversation, temperature);
@@ -2564,6 +2582,9 @@ version: 1
                 messages: conversation,
                 model: model,
             };
+            if (model === "o1-preview" || model === "o1-mini") {
+                new Notice(`${model} is thinking....`);
+            }
             try {
                 const completion = await this.openai_client.chat.completions.create(params);
                 new Notice("Message back from OpenAI");
