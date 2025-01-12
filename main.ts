@@ -379,13 +379,7 @@ export default class CaretPlugin extends Plugin {
                 new CustomModelModal(this.app, this).open();
             },
         });
-        // this.addCommand({
-        //     id: "worker-research",
-        //     name: "Worker - Research",
-        //     callback: () => {
-        //         new ResearchModal(this.app, this).open();
-        //     },
-        // });
+
         // Add Commands.
         this.addCommand({
             id: "toggle-nested-block-refs",
@@ -908,17 +902,6 @@ version: 1
                 }
             },
         });
-
-        // Helper command for just logging out info needed while developing
-        // this.addCommand({
-        //     id: "caret-log",
-        //     name: "Log",
-        //     callback: async () => {
-
-        //     },
-        // });
-
-        // Registering events.
 
         // This registers patching the canvas
         this.registerEvent(
