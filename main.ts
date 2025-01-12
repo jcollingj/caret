@@ -1,9 +1,18 @@
-// @ts-ignore
-import ollama from "ollama/browser";
+import { z } from "zod";
+
+import {
+    ai_sdk_streaming,
+    sdk_provider,
+    get_provider,
+    isEligibleProvider,
+    ai_sdk_completion,
+    ai_sdk_structured,
+} from "./llm_calls";
+
+// // @ts-ignore
+// import ollama from "ollama/browser";
 import { encodingForModel } from "js-tiktoken";
 import OpenAI from "openai";
-import Groq from "groq-sdk";
-import Anthropic from "@anthropic-ai/sdk";
 import { around } from "monkey-around";
 import { Canvas, ViewportNode, Message, Node, Edge, SparkleConfig } from "./types";
 import {
@@ -33,6 +42,14 @@ import { LinearWorkflowEditor } from "./views/workflowEditor";
 import { FullPageChat, VIEW_CHAT } from "./views/chat";
 import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
+import { createGoogleGenerativeAI, GoogleGenerativeAIProvider } from "@ai-sdk/google";
+import { createOpenAI, OpenAIProvider } from "@ai-sdk/openai";
+import { StreamTextResult, CoreTool } from "ai";
+import { AnthropicProvider, createAnthropic } from "@ai-sdk/anthropic";
+import { GroqProvider, createGroq } from "@ai-sdk/groq";
+import { createOllama, OllamaProvider } from "ollama-ai-provider";
+import { createOpenRouter, OpenRouterProvider } from "@openrouter/ai-sdk-provider";
+import { createOpenAICompatible, OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
     caret_version: "0.2.63",
@@ -155,21 +172,21 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
                 context_window: 200000,
                 function_calling: true,
                 vision: true,
-                streaming: false,
+                streaming: true,
             },
             "claude-3-opus-20240229": {
                 name: "Claude 3 Opus",
                 context_window: 200000,
                 function_calling: true,
                 vision: true,
-                streaming: false,
+                streaming: true,
             },
             "claude-3-sonnet-20240229": {
                 name: "Claude 3 Sonnet",
                 context_window: 200000,
                 function_calling: true,
                 vision: true,
-                streaming: false,
+                streaming: true,
             },
 
             "claude-3-haiku-20240307": {
@@ -177,7 +194,7 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
                 context_window: 200000,
                 function_calling: true,
                 vision: true,
-                streaming: false,
+                streaming: true,
             },
         },
         openrouter: {
@@ -311,6 +328,45 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
             },
         },
         custom: {},
+        google: {
+            "gemini-1.5-pro": {
+                name: "Gemini 1.5 Pro",
+                context_window: 800000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "gemini-1.5-flash": {
+                name: "Gemini 1.5 Flash",
+                context_window: 400000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+        },
+        perplexity: {
+            "llama-3.1-sonar-small-128k-online": {
+                name: "Sonar Small",
+                context_window: 127072,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
+            "llama-3.1-sonar-large-128k-online": {
+                name: "Sonar Large",
+                context_window: 127072,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
+            "llama-3.1-sonar-huge-128k-online": {
+                name: "Sonar Huge",
+                context_window: 127072,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
+        },
     },
     provider_dropdown_options: {
         openai: "OpenAI",
@@ -319,8 +375,12 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
         anthropic: "Anthropic",
         openrouter: "OpenRouter",
         custom: "Custom",
+        google: "Google Gemini",
+        perplexity: "Perplexity",
     },
     include_nested_block_refs: true,
+    google_api_key: "",
+    perplexity_api_key: "",
 };
 
 export default class CaretPlugin extends Plugin {
@@ -328,12 +388,16 @@ export default class CaretPlugin extends Plugin {
     canvas_patched: boolean = false;
     selected_node_colors: any = {};
     color_picker_open_on_last_click: boolean = false;
-    openai_client: OpenAI;
-    groq_client: Groq;
-    anthropic_client: Anthropic;
-    openrouter_client: OpenAI;
+    openai_client: OpenAIProvider;
+    groq_client: GroqProvider;
+    anthropic_client: AnthropicProvider;
+    ollama_client: OllamaProvider;
+    openrouter_client: OpenRouterProvider;
     encoder: any;
     pdfjs: any;
+    google_client: GoogleGenerativeAIProvider;
+    custom_client: OpenAICompatibleProvider | undefined | null;
+    perplexity_client: OpenAICompatibleProvider;
 
     async onload() {
         // Initalize extra icons
@@ -350,24 +414,45 @@ export default class CaretPlugin extends Plugin {
 
         // Initialize API clients
         if (this.settings.openai_api_key) {
-            this.openai_client = new OpenAI({ apiKey: this.settings.openai_api_key, dangerouslyAllowBrowser: true });
+            this.openai_client = createOpenAI({ apiKey: this.settings.openai_api_key });
         }
         if (this.settings.groq_api_key) {
-            this.groq_client = new Groq({ apiKey: this.settings.groq_api_key, dangerouslyAllowBrowser: true });
+            this.groq_client = createGroq({ apiKey: this.settings.groq_api_key });
         }
         if (this.settings.anthropic_api_key) {
-            this.anthropic_client = new Anthropic({
+            this.anthropic_client = createAnthropic({
                 apiKey: this.settings.anthropic_api_key,
+                headers: {
+                    "anthropic-dangerous-direct-browser-access": "true",
+                },
             });
         }
 
         if (this.settings.open_router_key) {
-            this.openrouter_client = new OpenAI({
-                baseURL: "https://openrouter.ai/api/v1",
+            this.openrouter_client = createOpenRouter({
                 apiKey: this.settings.open_router_key,
-                dangerouslyAllowBrowser: true,
             });
         }
+
+        if (this.settings.google_api_key) {
+            this.google_client = createGoogleGenerativeAI({
+                apiKey: this.settings.google_api_key,
+                // dangerouslyAllowBrowser: true,
+            });
+        }
+
+        if (this.settings.perplexity_api_key) {
+            this.perplexity_client = createOpenAICompatible({
+                apiKey: this.settings.perplexity_api_key,
+                baseURL: "https://api.perplexity.ai/",
+                name: "perplexity",
+            });
+        }
+
+        // SEt up Ollama
+        this.ollama_client = createOllama();
+        this.custom_client = undefined;
+
         // Initialize settings dab.
         this.addSettingTab(new CaretSettingTab(this.app, this));
 
@@ -379,13 +464,7 @@ export default class CaretPlugin extends Plugin {
                 new CustomModelModal(this.app, this).open();
             },
         });
-        // this.addCommand({
-        //     id: "worker-research",
-        //     name: "Worker - Research",
-        //     callback: () => {
-        //         new ResearchModal(this.app, this).open();
-        //     },
-        // });
+
         // Add Commands.
         this.addCommand({
             id: "toggle-nested-block-refs",
@@ -607,9 +686,9 @@ version: 1
                             this.app.workspace.revealLeaf(leaf);
                         });
                     }
+
                     return true;
                 }
-
                 return false;
             },
         });
@@ -736,23 +815,37 @@ version: 1
                                 const node = canvas.createTextNode(text_node_config);
                                 const node_id = node.id;
 
+                                const provider = this.settings.llm_provider;
+                                const model = this.settings.model;
+                                const temperature = this.settings.temperature;
+
+                                // await this.update_node_content_streaming(node_id, stream, this.settings.llm_provider);
+                                if (!isEligibleProvider(provider)) {
+                                    throw new Error(`Invalid provider: ${provider}`);
+                                }
+
+                                let sdk_provider: sdk_provider = get_provider(this, provider);
+
                                 if (
                                     this.settings.llm_provider_options[this.settings.llm_provider][this.settings.model]
                                         .streaming
                                 ) {
-                                    const stream: Message = await this.llm_call_streaming(
-                                        this.settings.llm_provider,
-                                        this.settings.model,
+                                    const stream = await ai_sdk_streaming(
+                                        sdk_provider,
+                                        model,
                                         conversation,
-                                        1
+                                        temperature,
+                                        provider
                                     );
 
-                                    await this.update_node_content(node_id, stream, this.settings.llm_provider);
+                                    await this.update_node_content_streaming(node_id, stream);
                                 } else {
-                                    const content = await this.llm_call(
-                                        this.settings.llm_provider,
-                                        this.settings.model,
-                                        conversation
+                                    const content = await ai_sdk_completion(
+                                        sdk_provider,
+                                        model,
+                                        conversation,
+                                        temperature,
+                                        provider
                                     );
                                     node.setText(content);
                                 }
@@ -908,17 +1001,6 @@ version: 1
                 }
             },
         });
-
-        // Helper command for just logging out info needed while developing
-        // this.addCommand({
-        //     id: "caret-log",
-        //     name: "Log",
-        //     callback: async () => {
-
-        //     },
-        // });
-
-        // Registering events.
 
         // This registers patching the canvas
         this.registerEvent(
@@ -1683,12 +1765,22 @@ version: 1
                                 content: `Condense the following text while preserving the original meaning. Return the condensed text by itself.
                         Text: ${content}`,
                             };
+                            const provider = this.settings.llm_provider;
 
-                            const condensed_content = await this.llm_call(
-                                this.settings.llm_provider,
+                            if (!isEligibleProvider(provider)) {
+                                throw new Error(`Invalid provider: ${provider}`);
+                            }
+
+                            let sdk_provider: sdk_provider = get_provider(this, provider);
+
+                            const condensed_content = await ai_sdk_completion(
+                                sdk_provider,
                                 this.settings.model,
-                                [llm_prompt]
+                                [llm_prompt],
+                                1,
+                                provider
                             );
+
                             const new_node = await this.createChildNode(
                                 canvas,
                                 node,
@@ -1732,51 +1824,61 @@ version: 1
                         callback: async () => {
                             const content = node.text || node.unknownData.text;
 
+                            const ChunksSchema = z.object({
+                                chunks: z.array(z.string().describe("A logical section of the original text")),
+                            });
+
                             const llm_prompt = {
                                 role: "user",
-                                content: `Split the following text into chunks if possible. Each chunk should aim to contain all of a logical section. Return the chunks as a list of strings with no other text.
-                            Example of expected output format: ["Chunk 1", "Chunk 2", "Chunk 3"]
-                            Text: ${content}`,
+                                content: `Split the following text into logical sections, preserving the complete meaning of each section:
+                                
+                                ${content}`,
                             };
 
-                            const split_content = await this.llm_call(this.settings.llm_provider, this.settings.model, [
-                                llm_prompt,
-                            ]);
-
-                            let split_content_array = [];
                             try {
-                                // attempt to parse the response
-                                split_content_array = JSON.parse(split_content);
-                            } catch (error) {
-                                console.error("Parsing error:", error);
-                                new Notice("Node is unable to be split");
-                                return;
-                            }
-
-                            const newX = node.x + node.width + 50;
-                            const totalHeight = (300 + 100) * split_content_array.length - 100;
-                            const startY = node.y + node.height / 2 - totalHeight / 2;
-                            let newY = startY;
-
-                            for (const content of split_content_array) {
-                                let newId = this.generateRandomId(16);
-
-                                try {
-                                    const newNodeTemp = await this.addNodeToCanvas(canvas, newId, {
-                                        x: newX,
-                                        y: newY,
-                                        width: node.width,
-                                        height: 300,
-                                        type: "text",
-                                        content: content,
-                                    });
-                                    const newNode = canvas.nodes?.get(newNodeTemp?.id!);
-                                    canvas.requestFrame();
-                                } catch (error) {
-                                    console.error("Failed to add node to canvas:", error);
-                                    new Notice("Failed to create node");
+                                const provider = this.settings.llm_provider;
+                                if (!isEligibleProvider(provider)) {
+                                    throw new Error(`Invalid provider: ${provider}`);
                                 }
-                                newY += 350;
+                                let sdk_provider = get_provider(this, provider);
+
+                                const { chunks } = await ai_sdk_structured(
+                                    sdk_provider,
+                                    this.settings.model,
+                                    [llm_prompt],
+                                    this.settings.temperature,
+                                    provider,
+                                    ChunksSchema
+                                );
+
+                                const newX = node.x + node.width + 50;
+                                const totalHeight = (300 + 100) * chunks.length - 100;
+                                const startY = node.y + node.height / 2 - totalHeight / 2;
+                                let newY = startY;
+
+                                for (const content of chunks) {
+                                    let newId = this.generateRandomId(16);
+
+                                    try {
+                                        const newNodeTemp = await this.addNodeToCanvas(canvas, newId, {
+                                            x: newX,
+                                            y: newY,
+                                            width: node.width,
+                                            height: 300,
+                                            type: "text",
+                                            content: content,
+                                        });
+                                        const newNode = canvas.nodes?.get(newNodeTemp?.id!);
+                                        canvas.requestFrame();
+                                    } catch (error) {
+                                        console.error("Failed to add node to canvas:", error);
+                                        new Notice("Failed to create node");
+                                    }
+                                    newY += 350;
+                                }
+                            } catch (error) {
+                                console.error("Error splitting node:", error);
+                                new Notice("Failed to split node");
                             }
                         },
                     });
@@ -1787,55 +1889,65 @@ version: 1
                         callback: async () => {
                             const content = node.text || node.unknownData.text;
 
+                            const ChunksSchema = z.object({
+                                chunks: z.array(z.string().describe("A logical section of the original text")),
+                            });
+
                             const llm_prompt = {
                                 role: "user",
-                                content: `Split the following text into chunks. You must always split into chunks. Each chunk should aim to contain all of a logical section. Return the chunks as a list of strings with no other text.
-                            Example of expected output format: ["Chunk 1", "Chunk 2", "Chunk 3"]
-                            Text: ${content}`,
+                                content: `Split the following text into logical sections, preserving the complete meaning of each section:
+                                
+                                ${content}`,
                             };
 
-                            const split_content = await this.llm_call(this.settings.llm_provider, this.settings.model, [
-                                llm_prompt,
-                            ]);
-
-                            let split_content_array = [];
                             try {
-                                // attempt to parse the response
-                                split_content_array = JSON.parse(split_content);
-                            } catch (error) {
-                                console.error("Parsing error:", error);
-                                new Notice("Node is unable to be split");
-                                return;
-                            }
-
-                            const newX = node.x + node.width + 50;
-                            const totalHeight = (300 + 100) * split_content_array.length - 100;
-                            const startY = node.y + node.height / 2 - totalHeight / 2;
-                            let newY = startY;
-
-                            for (const content of split_content_array) {
-                                let newId = this.generateRandomId(16);
-
-                                try {
-                                    const newNodeTemp = await this.addNodeToCanvas(canvas, newId, {
-                                        x: newX,
-                                        y: newY,
-                                        width: node.width,
-                                        height: 300,
-                                        type: "text",
-                                        content: content,
-                                    });
-                                    const newNode = canvas.nodes?.get(newNodeTemp?.id!);
-                                    if (newNode) {
-                                        // Add a link from the original node to the new node
-                                        await this.createEdge(node, newNode, canvas, "right");
-                                    }
-                                    canvas.requestFrame();
-                                } catch (error) {
-                                    console.error("Failed to add node to canvas:", error);
-                                    new Notice("Failed to create node");
+                                const provider = this.settings.llm_provider;
+                                if (!isEligibleProvider(provider)) {
+                                    throw new Error(`Invalid provider: ${provider}`);
                                 }
-                                newY += 350;
+                                let sdk_provider = get_provider(this, provider);
+
+                                const { chunks } = await ai_sdk_structured(
+                                    sdk_provider,
+                                    this.settings.model,
+                                    [llm_prompt],
+                                    this.settings.temperature,
+                                    provider,
+                                    ChunksSchema
+                                );
+
+                                const newX = node.x + node.width + 50;
+                                const totalHeight = (300 + 100) * chunks.length - 100;
+                                const startY = node.y + node.height / 2 - totalHeight / 2;
+                                let newY = startY;
+
+                                for (const content of chunks) {
+                                    let newId = this.generateRandomId(16);
+
+                                    try {
+                                        const newNodeTemp = await this.addNodeToCanvas(canvas, newId, {
+                                            x: newX,
+                                            y: newY,
+                                            width: node.width,
+                                            height: 300,
+                                            type: "text",
+                                            content: content,
+                                        });
+                                        const newNode = canvas.nodes?.get(newNodeTemp?.id!);
+                                        if (newNode) {
+                                            // Add a link from the original node to the new node
+                                            await this.createEdge(node, newNode, canvas, "right");
+                                        }
+                                        canvas.requestFrame();
+                                    } catch (error) {
+                                        console.error("Failed to add node to canvas:", error);
+                                        new Notice("Failed to create node");
+                                    }
+                                    newY += 350;
+                                }
+                            } catch (error) {
+                                console.error("Error splitting node:", error);
+                                new Notice("Failed to split node");
                             }
                         },
                     });
@@ -2330,17 +2442,19 @@ version: 1
                 new_canvas_node.unknownData.displayOverride = false;
             }
             new_canvas_node.unknownData.role = "assistant";
-            console.log("Here:");
-            console.log({ provider, model });
-            console.log(this.settings.llm_provider_options[provider]);
-            console.log(this.settings.llm_provider_options[provider][model].streaming);
+
+            if (!isEligibleProvider(provider)) {
+                throw new Error(`Invalid provider: ${provider}`);
+            }
+
+            let sdk_provider: sdk_provider = get_provider(this, provider);
 
             if (this.settings.llm_provider_options[provider][model].streaming) {
-                const stream = await this.llm_call_streaming(provider, model, conversation, temperature);
+                const stream = await ai_sdk_streaming(sdk_provider, model, conversation, temperature, provider);
                 new_canvas_node.text = "";
-                await this.update_node_content(new_node_id, stream, provider);
+                await this.update_node_content_streaming(new_node_id, stream);
             } else {
-                const content = await this.llm_call(provider, model, conversation);
+                const content = await ai_sdk_completion(sdk_provider, model, conversation, temperature, provider);
                 new_canvas_node.setText(content);
             }
             if (i === 0) {
@@ -2493,18 +2607,31 @@ version: 1
             context_window
         );
         const { provider, model, temperature } = this.mergeSettingsAndSparkleConfig(sparkle_config);
+        if (!isEligibleProvider(provider)) {
+            throw new Error(`Invalid provider: ${provider}`);
+        }
+        let sdk_provider: sdk_provider = get_provider(this, provider);
 
         if (this.settings.llm_provider_options[provider][model].streaming) {
-            const stream = await this.llm_call_streaming(provider, model, conversation, temperature);
-            refreshed_node.node.text = "";
-            await this.update_node_content(refreshed_node.id, stream, provider);
+            const stream = await ai_sdk_streaming(sdk_provider, model, conversation, temperature, provider);
+            // example: use textStream as an async iterable
+
+            // const stream = await this.llm_call_streaming(provider, model, conversation, temperature);
+
+            this.update_node_content(refreshed_node_id, "");
+            await this.update_node_content_streaming(refreshed_node_id, stream);
         } else {
-            const content = await this.llm_call(this.settings.llm_provider, this.settings.model, conversation);
-            refreshed_node.node.text = "content";
+            this.update_node_content(refreshed_node_id, "Refreshing...");
+            const content = await ai_sdk_completion(sdk_provider, model, conversation, temperature, provider);
+
+            refreshed_node.node.text = content;
+            this.update_node_content(refreshed_node_id, content);
         }
     }
-
-    async update_node_content(node_id: string, stream: any, llm_provider: string) {
+    async update_node_content_streaming(
+        node_id: string,
+        stream: StreamTextResult<Record<string, CoreTool<any, any>>, never>
+    ) {
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
         // @ts-ignore
         if (!canvas_view?.canvas) {
@@ -2521,340 +2648,50 @@ version: 1
             }
         }
         node.width = 510;
-
-        if (
-            llm_provider === "openai" ||
-            llm_provider === "groq" ||
-            llm_provider === "custom" ||
-            llm_provider === "openrouter"
-        ) {
-            for await (const part of stream) {
-                const delta_content = part.choices[0]?.delta.content || "";
-
-                const current_text = node.text;
-                const new_content = `${current_text}${delta_content}`;
-                const word_count = new_content.split(/\s+/).length;
-                const number_of_lines = Math.ceil(word_count / 7);
-                if (word_count > 500) {
-                    node.width = 750;
-                    node.height = Math.max(200, number_of_lines * 35);
-                } else {
-                    node.height = Math.max(200, number_of_lines * 45);
-                }
-
-                node.setText(new_content);
-                node.render();
+        for await (const textPart of stream.textStream) {
+            const current_text = node.text;
+            const new_content = `${current_text}${textPart}`;
+            const word_count = new_content.split(/\s+/).length;
+            const number_of_lines = Math.ceil(word_count / 7);
+            if (word_count > 500) {
+                node.width = 750;
+                node.height = Math.max(200, number_of_lines * 35);
+            } else {
+                node.height = Math.max(200, number_of_lines * 45);
             }
-        }
-        if (llm_provider === "ollama") {
-            for await (const part of stream) {
-                const current_text = node.text;
-                const new_content = `${current_text}${part.message.content}`;
-                const word_count = new_content.split(/\s+/).length;
-                const number_of_lines = Math.ceil(word_count / 7);
-                if (word_count > 500) {
-                    const width = 750;
-                    const height = Math.max(200, number_of_lines * 35);
-                    // TODO - Try out node.resize() to see if that solves the visual bug.
-                    node.height = height;
-                    // node.resize(width);
-                } else {
-                    node.height = Math.max(200, number_of_lines * 45);
-                }
-                node.setText(new_content);
-                node.render();
-            }
+
+            node.setText(new_content);
+            node.render();
         }
     }
+    async update_node_content(node_id: string, content: string) {
+        const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
+        // @ts-ignore
+        if (!canvas_view?.canvas) {
+            return;
+        }
+        const canvas: Canvas = (canvas_view as any).canvas; // Assuming canvas is a property of the view
 
-    async llm_call(provider: string, model: string, conversation: any[]): Promise<string> {
-        if (provider === "ollama") {
-            let model_param = model;
-            new Notice("Calling ollama");
-            try {
-                const response = await ollama.chat({
-                    model: model_param,
-                    messages: conversation,
-                });
-                new Notice("Message back from ollama");
-                return response.message.content;
-            } catch (error) {
-                console.error(error);
-                if (error.message) {
-                    new Notice(error.message);
-                }
-                throw error;
+        const nodes_iterator = canvas.nodes.values();
+        let node = null;
+        for (const node_objs of nodes_iterator) {
+            if (node_objs.id === node_id) {
+                node = node_objs;
+                break;
             }
-        } else if (provider == "openai") {
-            if (!this.openai_client) {
-                const error_message = "API key not configured for OpenAI. Restart the app if you just added it!";
-                new Notice(error_message);
-                throw new Error(error_message);
-            }
-            new Notice("Calling OpenAI");
-            const params = {
-                messages: conversation,
-                model: model,
-            };
-            if (model === "o1-preview" || model === "o1-mini") {
-                new Notice(`${model} is thinking....`);
-            }
-            try {
-                const completion = await this.openai_client.chat.completions.create(params);
-                new Notice("Message back from OpenAI");
-                const message = completion.choices[0].message as Message;
-                return message.content;
-            } catch (error) {
-                console.error("Error fetching chat completion from OpenAI:", error);
-                new Notice(error.message);
-                throw error;
-            }
-        } else if (provider == "anthropic") {
-            try {
-                if (!this.anthropic_client) {
-                    const error_message =
-                        "API key not configured for Anthropic.  Restart the app if you just added it!";
-                    new Notice(error_message);
-                    throw new Error(error_message);
-                }
-                new Notice("Calling Anthropic");
-
-                // Extract system message content if it exists
-                let systemContent = "";
-                conversation = conversation.filter((message) => {
-                    if (message.role === "system") {
-                        systemContent = message.content;
-                        return false; // Remove the system message from the conversation
-                    }
-                    return true;
-                });
-
-                interface AnthropicRequestBody {
-                    model: string;
-                    max_tokens: number;
-                    messages: any[];
-                    system?: string;
-                }
-
-                const body: AnthropicRequestBody = {
-                    model: model,
-                    max_tokens: 4096,
-                    messages: conversation,
-                };
-
-                if (systemContent.length > 0) {
-                    body.system = systemContent;
-                }
-                const headers = {
-                    "x-api-key": this.settings.anthropic_api_key,
-                    "anthropic-version": "2023-06-01", // Add this line
-                    "content-type": "application/json", // Add this line
-                };
-                const response = await requestUrl({
-                    url: "https://api.anthropic.com/v1/messages",
-                    method: "POST",
-                    headers: headers,
-                    body: JSON.stringify(body),
-                });
-                const completion = await response.json;
-
-                new Notice("Message back from Anthropic");
-                const message = completion.content[0].text;
-                return message;
-            } catch (error) {
-                console.error("Error during Anthropic call:");
-                console.error(error);
-                console.error(error.type);
-                new Notice(`Error: ${error.message}`);
-                throw error;
-            }
-        } else if (provider == "groq") {
-            if (!this.groq_client) {
-                const error_message = "API key not configured for Groq.  Restart the app if you just added it!";
-                new Notice(error_message);
-                throw new Error(error_message);
-            }
-            new Notice("Calling Groq");
-
-            const params = {
-                messages: conversation,
-                model: model,
-            };
-            try {
-                const completion = await this.groq_client.chat.completions.create(params);
-                new Notice("Message back from Groq");
-                const message = completion.choices[0].message as Message;
-                return message.content;
-            } catch (error) {
-                console.error("Error fetching chat completion from OpenAI:", error);
-                new Notice(error.message);
-                throw error;
-            }
-        } else if (provider == "openrouter") {
-            if (!this.openrouter_client) {
-                const error_message = "API key not configured for OpenRouter.  Restart the app if you just added it!";
-                new Notice(error_message);
-                throw new Error(error_message);
-            }
-            new Notice("Calling OpenRouter");
-
-            const params = {
-                messages: conversation,
-                model: model,
-            };
-            try {
-                const completion = await this.openrouter_client.chat.completions.create(params);
-                new Notice("Message back from OpenRouter");
-                const message = completion.choices[0].message as Message;
-                return message.content;
-            } catch (error) {
-                console.error("Error fetching chat completion from OpenAI:", error);
-                new Notice(error.message);
-                throw error;
-            }
+        }
+        node.width = 510;
+        const word_count = content.split(/\s+/).length;
+        const number_of_lines = Math.ceil(word_count / 7);
+        if (word_count > 500) {
+            node.width = 750;
+            node.height = Math.max(200, number_of_lines * 35);
         } else {
-            const error_message = "Invalid llm provider / model configuration";
-            new Notice(error_message);
-            throw new Error(error_message);
+            node.height = Math.max(200, number_of_lines * 45);
         }
-    }
-    async llm_call_streaming(provider: string, model: string, conversation: any[], temperature: number) {
-        if (this.settings.system_prompt && this.settings.system_prompt.length > 0) {
-            conversation.unshift({
-                role: "system",
-                content: this.settings.system_prompt,
-            });
-        }
-        if (provider === "ollama") {
-            let model_param = model;
-            new Notice("Calling ollama");
-            try {
-                const response = await ollama.chat({
-                    model: model_param,
-                    messages: conversation,
-                    stream: true,
-                    temperature: temperature,
-                });
-                return response;
-            } catch (error) {
-                console.error(error);
-                if (error.message) {
-                    new Notice(error.message);
-                }
-                throw error;
-            }
-        } else if (provider == "openai") {
-            if (!this.openai_client) {
-                const error_message = "API key not configured for OpenAI. Restart the app if you just added it!";
-                new Notice(error_message);
-                throw new Error(error_message);
-            }
-            new Notice("Calling OpenAI");
-            const params = {
-                messages: conversation,
-                model: model,
-                stream: true,
-                temperature: temperature,
-            };
 
-            try {
-                const stream = await this.openai_client.chat.completions.create(params);
-                return stream;
-            } catch (error) {
-                console.error("Error fetching chat completion from OpenAI:", error);
-                new Notice(error.message);
-                throw error;
-            }
-        } else if (provider == "openrouter") {
-            if (!this.openrouter_client) {
-                const error_message = "API key not configured for OpenRouter. Restart the app if you just added it!";
-                new Notice(error_message);
-                throw new Error(error_message);
-            }
-            new Notice("Calling OpenRouter");
-            const params = {
-                messages: conversation,
-                model: model,
-                stream: true,
-                temperature: temperature,
-            };
-            try {
-                const stream = await this.openrouter_client.chat.completions.create(params);
-                return stream;
-            } catch (error) {
-                console.error("Error fetching chat completion from OpenRouter:", error);
-                new Notice(error.message);
-                throw error;
-            }
-        } else if (provider == "groq") {
-            if (!this.groq_client) {
-                const error_message = "API key not configured for Groq.  Restart the app if you just added it!";
-                new Notice(error_message);
-                throw new Error(error_message);
-            }
-            new Notice("Calling Groq");
-
-            const params = {
-                messages: conversation,
-                model: model,
-                stream: true,
-                temperature: temperature,
-            };
-            try {
-                const stream = await this.groq_client.chat.completions.create(params);
-                return stream;
-            } catch (error) {
-                console.error("Error fetching chat completion from OpenAI:", error);
-                new Notice(error.message);
-                throw error;
-            }
-        } else if (provider == "anthropic") {
-            new Notice("Error: Anthropic streaming not supported");
-        } else if (provider == "custom") {
-            new Notice("Calling custom client");
-            const custom_model = this.settings.model;
-            const model_settings = this.settings.custom_endpoints[custom_model];
-            const custom_api_key = model_settings.api_key;
-            const custom_endpoint = model_settings.endpoint;
-
-            const custom_client = new OpenAI({
-                apiKey: custom_api_key,
-                baseURL: custom_endpoint,
-                dangerouslyAllowBrowser: true,
-            });
-
-            if (!custom_endpoint) {
-                const error_message = "Custom endpoint not configured. Restart the app if you just added it!";
-                new Notice(error_message);
-                throw new Error(error_message);
-            }
-
-            if (!custom_client) {
-                const error_message = "Custom client not initialized properly. Restart the app if you just added it!";
-                new Notice(error_message);
-                throw new Error(error_message);
-            }
-
-            const params = {
-                messages: conversation,
-                model: model,
-                stream: true,
-                temperature: temperature,
-            };
-
-            try {
-                const stream = await custom_client.chat.completions.create(params);
-                return stream;
-            } catch (error) {
-                console.error("Error streaming from Custom Client:", error);
-                new Notice(error.message);
-                throw error;
-            }
-        } else {
-            const error_message = "Invalid llm provider / model configuration";
-            new Notice(error_message);
-            throw new Error(error_message);
-        }
+        node.setText(content);
+        node.render();
     }
 
     add_sparkle_button(menuEl: HTMLElement) {
