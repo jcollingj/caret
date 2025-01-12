@@ -149,4 +149,6 @@ export interface CaretPluginSettings {
     llm_provider_options: LLMProviderOptions;
     provider_dropdown_options: { [key: string]: string };
     include_nested_block_refs: boolean;
+    google_api_key: string;
+    perplexity_api_key: string;
 }

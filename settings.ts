@@ -20,6 +20,7 @@ type ModelDropDownSettings = {
     ollama: string;
     anthropic?: string;
     custom?: string; // Make 'custom' optional
+    perplexity: string;
 };
 
 import { Models, CustomModels, LLMProviderOptions } from "./types";
@@ -31,13 +32,27 @@ export class CaretSettingTab extends PluginSettingTab {
     constructor(app: App, plugin: CaretPlugin) {
         super(app, plugin);
         this.plugin = plugin;
-    }
 
+        // Update streaming setting for Anthropic models
+        const default_llm_providers = DEFAULT_SETTINGS.llm_provider_options;
+        const current_llm_providers = this.plugin.settings.llm_provider_options;
+
+        if (current_llm_providers.anthropic) {
+            for (const [modelKey, modelValue] of Object.entries(default_llm_providers.anthropic)) {
+                if (current_llm_providers.anthropic[modelKey]) {
+                    current_llm_providers.anthropic[modelKey].streaming = modelValue.streaming;
+                }
+            }
+            // Save the updated settings
+            this.plugin.saveSettings();
+        }
+    }
     api_settings_tab(containerEl: HTMLElement): void {
         // API settings logic here
         const default_llm_providers = DEFAULT_SETTINGS.llm_provider_options;
         const current_llm_providers = this.plugin.settings.llm_provider_options;
         const current_custom = current_llm_providers.custom;
+
         this.plugin.settings.llm_provider_options = { ...default_llm_providers, custom: { ...current_custom } };
 
         const custom_endpoints = this.plugin.settings.custom_endpoints;
@@ -133,7 +148,6 @@ export class CaretSettingTab extends PluginSettingTab {
         }
 
         if (context_window) {
-            console.log({ context_window });
             setting.setDesc(`FYI your selected model has a context window of ${context_window}`);
         }
         if (this.plugin.settings.llm_provider === "ollama") {
@@ -217,6 +231,35 @@ export class CaretSettingTab extends PluginSettingTab {
                     });
                 text.inputEl.addClass("caret-hidden-value-unsecure");
             });
+
+        new Setting(containerEl)
+            .setName("Google Gemini API key")
+            .setDesc("")
+            .addText((text) => {
+                text.setPlaceholder("Google Gemini API key")
+                    .setValue(this.plugin.settings.google_api_key)
+                    .onChange(async (value: string) => {
+                        this.plugin.settings.google_api_key = value;
+                        await this.plugin.saveSettings();
+                        await this.plugin.loadSettings();
+                    });
+                text.inputEl.addClass("caret-hidden-value-unsecure");
+            });
+
+        new Setting(containerEl)
+            .setName("Perplexity API key")
+            .setDesc("")
+            .addText((text) => {
+                text.setPlaceholder("Perplexity API key")
+                    .setValue(this.plugin.settings.perplexity_api_key)
+                    .onChange(async (value: string) => {
+                        this.plugin.settings.perplexity_api_key = value;
+                        await this.plugin.saveSettings();
+                        await this.plugin.loadSettings();
+                    });
+                text.inputEl.addClass("caret-hidden-value-unsecure");
+            });
+
         new Setting(containerEl)
             .setName("Reload after adding API keys!")
             .setDesc(
@@ -311,19 +354,6 @@ export class CaretSettingTab extends PluginSettingTab {
                     await this.plugin.loadSettings();
                 });
             });
-
-        // new Setting(containerEl)
-        //     .setName("Canvas keybinds")
-        //     .setDesc("Select which keybinds will be used for canvas operations.")
-        //     .addText((text) => {
-        //         text.setPlaceholder("Enter canvas keybinds")
-        //             .setValue(this.plugin.settings.canvas_keybinds)
-        //             .onChange(async (value) => {
-        //                 this.plugin.settings.canvas_keybinds = value;
-        //                 await this.plugin.saveSettings();
-        //                 await this.plugin.loadSettings();
-        //             });
-        //     });
     }
 
     display(): void {
