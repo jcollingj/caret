@@ -29,7 +29,7 @@ The discord is for people to:
 Good vibes only. Strongly enforced.
 
 > [!note]
-> Please note that this discord is also for my paid product, Caret. See note at the bottom.
+> Please note that this discord is also for my paid product, Caret.
 
 
 ## Docs 
