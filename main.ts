@@ -1807,6 +1807,46 @@ version: 1
                             canvas.requestFrame();
                         },
                     },
+                    {
+                        name: "Fetch website",
+                        icon: "lucide-globe",
+                        tooltip: "Fetch website content",
+                        callback: async () => {
+                            let url: string | null = null;
+                            let isWebview = false;
+                            if (node.url) {
+                                url = node.url.trim();
+                                isWebview = true;
+                            } else {
+                                url = node.text.trim();
+                            }
+                            // Could have Cursor make this a better validation regex
+                            if (!url || !url.startsWith("http")) {
+                                new Notice("Invalid or missing URL - must start with http");
+                                throw new Error("Invalid url");
+                            }
+                            const response = await requestUrl(url);
+
+                            // Really simpler parser. Could improve this.
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(response.text, "text/html");
+                            const content = doc.body ? doc.body.textContent : "";
+
+                            const fullContent = url + "\n\n" + content;
+
+                            // If it's a webview we need to update unknown data to make it accessible
+                            if (isWebview) {
+                                console.log("Updating unknownData.websiteContent");
+                                console.log("Website content parsed:");
+                                console.log(fullContent);
+                                node.unknownData.websiteContent = fullContent;
+                            } else {
+                                console.log("Updating text card with website content");
+                                this.update_node_content(node.id, fullContent);
+                            }
+                            canvas.requestFrame();
+                        },
+                    },
                 ];
 
                 if (
