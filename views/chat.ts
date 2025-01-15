@@ -1,3 +1,5 @@
+import { streamText, StreamTextResult, CoreTool, generateText, generateObject } from "ai";
+import { ai_sdk_streaming, isEligibleProvider, sdk_provider, get_provider, ai_sdk_completion } from "../llm_calls";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { ConvertTextToNoteModal } from "../modals/convertTextToNoteModal";
@@ -5,10 +7,11 @@ import { InsertNoteModal } from "../modals/insertNoteModal";
 import ChatComponent from "../components/chat";
 import { Message } from "../types";
 import { Notice, ItemView, WorkspaceLeaf } from "obsidian";
+import CaretPlugin from "../main";
 export const VIEW_CHAT = "main-caret";
 export class FullPageChat extends ItemView {
     chat_id: string;
-    plugin: any;
+    plugin: CaretPlugin;
     conversation_title: string;
     textBox: HTMLTextAreaElement;
     messagesContainer: HTMLElement; // Container for messages
@@ -243,6 +246,10 @@ export class FullPageChat extends ItemView {
                 await this.name_new_chat(new_file_created);
             }
         } else {
+            if (!file_to_save_to?.path) {
+                new Notice("Failed to find file to save to");
+                return;
+            }
             const file = await this.app.vault.getFileByPath(file_to_save_to.path);
             if (!file) {
                 new Notice("Failed to save file");
@@ -262,13 +269,21 @@ Respond in plain text with no formatting.
             new_message += `${message.role}:\n${message.content}`;
         }
         const conversation = [{ role: "user", content: new_message }];
-        const output = await this.plugin.llm_call(
-            this.plugin.settings.llm_provider,
-            this.plugin.settings.model,
-            conversation
-        );
+
+        const provider = this.plugin.settings.llm_provider;
+        const model = this.plugin.settings.model;
+        const temperature = this.plugin.settings.temperature;
+
+        // await this.update_node_content_streaming(node_id, stream, this.settings.llm_provider);
+        if (!isEligibleProvider(provider)) {
+            throw new Error(`Invalid provider: ${provider}`);
+        }
+
+        let sdk_provider: sdk_provider = get_provider(this.plugin, provider);
+        const content = await ai_sdk_completion(sdk_provider, model, conversation, temperature, provider);
+
         const path = new_file.path;
-        const newPath = `${path.substring(0, path.lastIndexOf("/"))}/${output}.md`;
+        const newPath = `${path.substring(0, path.lastIndexOf("/"))}/${content}.md`;
         await this.app.vault.rename(new_file, newPath);
     }
 

@@ -1,3 +1,5 @@
+import { streamText, StreamTextResult, CoreTool, generateText, generateObject } from "ai";
+import { ai_sdk_streaming, isEligibleProvider, sdk_provider, get_provider, ai_sdk_completion } from "../llm_calls";
 import React, { useState, useEffect, useImperativeHandle, forwardRef, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -5,9 +7,10 @@ import { materialDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Clipboard } from "lucide-react";
 import { NotebookPen } from "lucide-react";
 import remarkGfm from "remark-gfm";
+import CaretPlugin from "../main";
 
 interface ChatComponentProps {
-    plugin: any;
+    plugin: CaretPlugin;
     chat_id: string;
     initialConversation: Message[];
     onSubmitMessage: (message: string) => Promise<void>;
@@ -195,72 +198,51 @@ const ChatComponent = forwardRef<
 
             const encoded_message = plugin.encoder.encode(modified_content);
             const message_length = encoded_message.length;
-            if (total_context_length + message_length > plugin.context_window) {
+            if (total_context_length + message_length > plugin.settings.context_window) {
                 break;
             }
             total_context_length += message_length;
             valid_conversation.push({ ...message, content: modified_content });
         }
+        const provider = plugin.settings.llm_provider;
+        const model = plugin.settings.model;
+        const temperature = plugin.settings.temperature;
+
+        // await this.update_node_content_streaming(node_id, stream, this.settings.llm_provider);
+        if (!isEligibleProvider(provider)) {
+            throw new Error(`Invalid provider: ${provider}`);
+        }
+
+        let sdk_provider: sdk_provider = get_provider(plugin, provider);
 
         if (plugin.settings.llm_provider_options[plugin.settings.llm_provider][plugin.settings.model].streaming) {
-            const response = await plugin.llm_call_streaming(
-                plugin.settings.llm_provider,
-                plugin.settings.model,
-                valid_conversation
-            );
+            console.log({ model, temperature, provider });
+            const stream = await ai_sdk_streaming(sdk_provider, model, valid_conversation, temperature, provider);
+
             setConversation((prev) => [...prev, { content: "", role: "assistant" }]);
-            await streamMessage(response);
+            await streamMessage(stream);
             setIsGenerating(false);
             handleSave();
         } else {
-            const content = await plugin.llm_call(
-                plugin.settings.llm_provider,
-                plugin.settings.model,
-                valid_conversation
-            );
+            const content = await ai_sdk_completion(sdk_provider, model, valid_conversation, temperature, provider);
             setConversation((prev) => [...prev, { content, role: "assistant" }]);
             setIsGenerating(false);
             handleSave();
         }
     };
 
-    const streamMessage = async (stream_response: any) => {
+    const streamMessage = async (stream_response: StreamTextResult<Record<string, CoreTool<any, any>>, never>) => {
         try {
-            if (plugin.settings.llm_provider === "ollama") {
-                console.log("using ollama");
-                let streamEnded = false;
-                for await (const part of stream_response) {
-                    if (part.done || part.success) {
-                        streamEnded = true;
-                        break;
-                    }
-                    setConversation((prev) => {
-                        const updated = [...prev];
-                        updated[updated.length - 1].content += part.message.content;
-                        return updated;
-                    });
-                }
-                if (!streamEnded) {
-                    throw new Error("Did not receive done or success response in stream.");
-                }
-            } else if (
-                plugin.settings.llm_provider === "openai" ||
-                plugin.settings.llm_provider === "groq" ||
-                plugin.settings.llm_provider === "custom" ||
-                plugin.settings.llm_provider === "openrouter"
-            ) {
-                for await (const part of stream_response) {
-                    const delta_content = part.choices[0]?.delta.content || "";
-                    setConversation((prev) => {
-                        const updated = [...prev];
-                        updated[updated.length - 1].content += delta_content;
-                        return updated;
-                    });
-                }
+            for await (const textPart of stream_response.textStream) {
+                setConversation((prev) => {
+                    const updated = [...prev];
+                    updated[updated.length - 1].content += textPart;
+                    return updated;
+                });
             }
         } catch (error) {
             console.error("Error in streamMessage:", error);
-            throw new Error("Did not receive done or success response in stream.");
+            throw new Error("Error processing stream response");
         }
     };
 

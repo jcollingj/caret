@@ -52,7 +52,7 @@ import { createOpenRouter, OpenRouterProvider } from "@openrouter/ai-sdk-provide
 import { createOpenAICompatible, OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.64",
+    caret_version: "0.2.65",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -2615,8 +2615,6 @@ version: 1
         if (this.settings.llm_provider_options[provider][model].streaming) {
             const stream = await ai_sdk_streaming(sdk_provider, model, conversation, temperature, provider);
             // example: use textStream as an async iterable
-
-            // const stream = await this.llm_call_streaming(provider, model, conversation, temperature);
 
             this.update_node_content(refreshed_node_id, "");
             await this.update_node_content_streaming(refreshed_node_id, stream);
