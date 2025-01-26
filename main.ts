@@ -1718,6 +1718,33 @@ version: 1
                         },
                     },
                     {
+                        name: "Log",
+                        icon: "lucide-file-text",
+                        tooltip: "Set role to log",
+                        callback: () => {
+                            // Get the active selection from the document
+                            const selection = document.getSelection();
+                            if (selection && selection.toString()) {
+                                // Copy selected text to clipboard
+                                navigator.clipboard
+                                    .writeText(selection.toString())
+                                    .then(() => {
+                                        new Notice("Copied selection to clipboard");
+                                    })
+                                    .catch((err) => {
+                                        console.error("Failed to copy text: ", err);
+                                        new Notice("Failed to copy to clipboard");
+                                    });
+                            } else {
+                                new Notice("No text selected");
+                            }
+
+                            node.unknownData.role = "log";
+                            node.unknownData.displayOverride = false;
+                            canvas.requestFrame();
+                        },
+                    },
+                    {
                         name: "Clear Role",
                         // icon: "lucide-message-circle-off",
                         icon: "lucide-user-x",
