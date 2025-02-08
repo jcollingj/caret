@@ -33,6 +33,15 @@ export interface ViewportNode {
     y: number;
     zIndex: number;
 }
+export interface UnknownData {
+    id: string;
+    type: string;
+    text?: string;
+    role?: string;
+    url?: string;
+    websiteContent?: string;
+    file?: string;
+}
 
 export interface Node {
     id: string;
@@ -45,6 +54,7 @@ export interface Node {
     color: string;
     render(): void;
     file?: string;
+    unknownData: UnknownData;
 }
 
 // TODO - improve types for everyting

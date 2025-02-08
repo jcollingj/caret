@@ -81,6 +81,18 @@ export async function ai_sdk_streaming(
 ): Promise<StreamTextResult<Record<string, CoreTool<any, any>>, never>> {
     new Notice(`Calling ${provider_name[0].toUpperCase() + provider_name.slice(1)}`);
     const formattedPrompt = conversation.map((msg) => `${msg.role}: ${msg.content}`).join("\n");
+    const handleError = (event: unknown) => {
+        const error = (event as { error: unknown }).error;
+        const typedError = error as { errors: Array<{ statusCode: number }> };
+        const errors = typedError.errors;
+
+        if (errors?.some((e) => e.statusCode === 429)) {
+            console.error("Rate limit exceeded error");
+            new Notice(`Rate limit exceeded for ${provider_name} API`);
+        } else {
+            new Notice(`Unknown error during ${provider_name} streaming`);
+        }
+    };
 
     if (provider_name === "openrouter") {
         const openrouter_provider = provider as OpenRouterProvider;
@@ -88,6 +100,7 @@ export async function ai_sdk_streaming(
             model: openrouter_provider.chat(model),
             prompt: formattedPrompt,
             temperature,
+            onError: handleError,
         });
     }
 
@@ -96,6 +109,7 @@ export async function ai_sdk_streaming(
         model: final_provider(model),
         prompt: formattedPrompt,
         temperature,
+        onError: handleError,
     });
 
     return stream;
@@ -109,7 +123,6 @@ export async function ai_sdk_completion(
 ): Promise<string> {
     new Notice(`Calling ${provider_name[0].toUpperCase() + provider_name.slice(1)}`);
     const formattedPrompt = conversation.map((msg) => `${msg.role}: ${msg.content}`).join("\n");
-    console.log({ model });
 
     if (provider_name === "openrouter") {
         const openrouter_provider = provider as OpenRouterProvider;
@@ -149,9 +162,9 @@ export async function ai_sdk_structured<T extends z.ZodType>(
             prompt: formattedPrompt,
             temperature,
         });
+
         return response;
     }
-    console.log({ schema, conversation });
 
     const final_provider = provider as Exclude<sdk_provider, OpenRouterProvider>;
     const response = await generateObject({
@@ -160,7 +173,6 @@ export async function ai_sdk_structured<T extends z.ZodType>(
         prompt: formattedPrompt,
         temperature,
     });
-    console.log(response);
 
     return response.object;
 }

@@ -14,7 +14,7 @@ import {
 import { encodingForModel } from "js-tiktoken";
 import OpenAI from "openai";
 import { around } from "monkey-around";
-import { Canvas, ViewportNode, Message, Node, Edge, SparkleConfig } from "./types";
+import { Canvas, ViewportNode, Message, Node, Edge, SparkleConfig, UnknownData } from "./types";
 import {
     MarkdownView,
     Modal,
@@ -107,6 +107,20 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
             "o1-mini": {
                 name: "o1-mini",
                 context_window: 128000,
+                function_calling: false,
+                vision: false,
+                streaming: false,
+            },
+            o1: {
+                name: "o1",
+                context_window: 200000,
+                function_calling: false,
+                vision: false,
+                streaming: false,
+            },
+            "o3-mini": {
+                name: "o3-mini",
+                context_window: 200000,
                 function_calling: false,
                 vision: false,
                 streaming: false,
@@ -326,9 +340,59 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
                 vision: false,
                 streaming: true,
             },
+            "deepseek-r1:1.5b": {
+                name: "DeepSeek r1 1.5B",
+                context_window: 131072,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
+
+            "deepseek-r1:8b": {
+                name: "DeepSeek r1 8B",
+                context_window: 131072,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
+            "deepseek-r1:14b": {
+                name: "DeepSeek r1 14B",
+                context_window: 131072,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
+            "deepseek-r1:32b": {
+                name: "DeepSeek r1 32B",
+                context_window: 131072,
+                function_calling: false,
+                vision: false,
+                streaming: true,
+            },
         },
         custom: {},
         google: {
+            "gemini-2.0-flash": {
+                name: "Gemini 2.0 Flash",
+                context_window: 1048576,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "gemini-2.0-flash-lite-preview-02-05": {
+                name: "Gemini 2.0 Flash Lite Preview",
+                context_window: 1048576,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "gemini-2.0-pro-exp-02-05": {
+                name: "Gemini 2.0 Pro Exp (Rate Limited)",
+                context_window: 1048576,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
             "gemini-1.5-pro": {
                 name: "Gemini 1.5 Pro",
                 context_window: 800000,
@@ -1863,12 +1927,8 @@ version: 1
 
                             // If it's a webview we need to update unknown data to make it accessible
                             if (isWebview) {
-                                console.log("Updating unknownData.websiteContent");
-                                console.log("Website content parsed:");
-                                console.log(fullContent);
                                 node.unknownData.websiteContent = fullContent;
                             } else {
-                                console.log("Updating text card with website content");
                                 this.update_node_content(node.id, fullContent);
                             }
                             canvas.requestFrame();
@@ -1898,7 +1958,7 @@ version: 1
                             const llm_prompt = {
                                 role: "user",
                                 content: `Split the following text into logical sections, preserving the complete meaning of each section:
-                                
+
                                 ${content}`,
                             };
 
@@ -1963,7 +2023,7 @@ version: 1
                             const llm_prompt = {
                                 role: "user",
                                 content: `Split the following text into logical sections, preserving the complete meaning of each section:
-                                
+
                                 ${content}`,
                             };
 
@@ -2229,6 +2289,14 @@ version: 1
         }
         return node;
     }
+    async getAllNodesFullData(canvas: Canvas): Promise<Node[]> {
+        const nodes_iterator = canvas.nodes.values();
+        let nodes: Node[] = [];
+        for (const node_obj of nodes_iterator) {
+            nodes.push(node_obj);
+        }
+        return nodes;
+    }
     async getCurrentCanvasView() {
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
         // @ts-ignore
@@ -2248,28 +2316,32 @@ version: 1
             visited.add(nodeId);
 
             const node = nodes.find((n) => n.id === nodeId);
+
             if (node) {
                 let nodeContent = "";
-                if (node.role === "") {
+                const data: UnknownData = node.unknownData;
+                if (data.role === "") {
                     if (node.type === "text") {
-                        nodeContent = node.text;
+                        nodeContent = node.text || "";
                         if (this.settings.include_nested_block_refs) {
                             const block_ref_content = await this.getRefBlocksContent(node.text);
                             nodeContent += block_ref_content;
                         }
-                    } else if (node.type === "file") {
-                        if (node.file && node.file.includes(".md")) {
-                            const file = this.app.vault.getFileByPath(node.file);
+                    } else if (data.type === "file") {
+                        if (data.file && data.file.includes(".md")) {
+                            const file = this.app.vault.getFileByPath(data.file);
                             if (file) {
                                 const fileContent = await this.app.vault.cachedRead(file);
-                                nodeContent = `\n\n---------------------------\n\nFile Title: ${node.file}\n${fileContent}`;
+                                nodeContent = `\n\n---------------------------\n\nFile Title: ${data.file}\n${fileContent}`;
                             } else {
-                                console.error("File not found:", node.file);
+                                console.error("File not found:", data.file);
                             }
-                        } else if (node.file && node.file.includes(".pdf")) {
-                            const pdfContent = await this.extractTextFromPDF(node.file);
-                            nodeContent = `\n\n---------------------------\n\nPDF File Title: ${node.file}\n${pdfContent}`;
+                        } else if (data.file && data.file.includes(".pdf")) {
+                            const pdfContent = await this.extractTextFromPDF(data.file);
+                            nodeContent = `\n\n---------------------------\n\nPDF File Title: ${data.file}\n${pdfContent}`;
                         }
+                    } else if (data.type === "link") {
+                        nodeContent = data.websiteContent || "";
                     }
                     contentBlocks.push(nodeContent);
                 }
@@ -2315,6 +2387,7 @@ version: 1
         const canvas = canvas_view.canvas;
 
         let node = await this.getCurrentNode(canvas, node_id);
+
         if (!node) {
             console.error("Node not found with ID:", node_id);
             return;
@@ -2323,7 +2396,37 @@ version: 1
         node.unknownData.role = "user";
 
         const canvas_data = canvas.getData();
-        const { edges, nodes } = canvas_data;
+
+        const fullDataNodes = await this.getAllNodesFullData(canvas);
+
+        const { edges } = canvas_data;
+        const nodes = fullDataNodes;
+        for (let i = 0; i < nodes.length; i++) {
+            const currentNode = nodes[i];
+
+            if (currentNode.unknownData.type === "link") {
+                if (currentNode.unknownData.url && !currentNode.unknownData.websiteContent) {
+                    const url = currentNode.unknownData.url;
+                    const response = await requestUrl(url);
+
+                    // Really simpler parser. Could improve this.
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(response.text, "text/html");
+                    const content = doc.body ? doc.body.textContent : "";
+
+                    const fullContent = url + "\n\n" + content;
+
+                    currentNode.unknownData.websiteContent = fullContent;
+
+                    // Update the corresponding node in fullDataNodes
+                    const indexInFullDataNodes = fullDataNodes.findIndex((node) => node.id === currentNode.id);
+
+                    if (indexInFullDataNodes !== -1) {
+                        fullDataNodes[indexInFullDataNodes].unknownData.websiteContent = fullContent;
+                    }
+                }
+            }
+        }
 
         // Continue with operations on `target_node`
         if (node.hasOwnProperty("file")) {
@@ -2484,6 +2587,7 @@ version: 1
         }
 
         const { conversation } = await this.buildConversation(node, nodes, edges, local_system_prompt, context_window);
+
         const { model, provider, temperature } = this.mergeSettingsAndSparkleConfig(sparkle_config);
 
         const node_content = ``;
@@ -2539,12 +2643,12 @@ version: 1
         const conversation = [];
         let local_system_prompt = system_prompt;
         let convo_total_tokens = 0;
-        const settings = this.settings;
 
         for (let i = 0; i < longest_lineage.length; i++) {
             const node = longest_lineage[i];
 
             let node_context = await this.getAssociatedNodeContent(node, nodes, edges);
+
             if (this.settings.include_nested_block_refs) {
                 const block_ref_content = await this.getRefBlocksContent(node_context);
                 if (block_ref_content.length > 0) {
@@ -2557,7 +2661,7 @@ version: 1
             // This should only go one layer deep:
 
             // @ts-ignore
-            let role = node.role || "";
+            let role = node.unknownData.role || "";
             if (role === "user") {
                 let content = node.text;
                 if (node.type === "file" && node.file) {
@@ -2715,7 +2819,13 @@ version: 1
         node.width = 510;
         for await (const textPart of stream.textStream) {
             const current_text = node.text;
-            const new_content = `${current_text}${textPart}`;
+            let processed_text = textPart;
+            if (textPart === "<think>") {
+                processed_text = "<|think>";
+            } else if (textPart.trim() === "</think>") {
+                processed_text = "<|/think>";
+            }
+            const new_content = `${current_text}${processed_text}`;
             const word_count = new_content.split(/\s+/).length;
             const number_of_lines = Math.ceil(word_count / 7);
             if (word_count > 500) {
