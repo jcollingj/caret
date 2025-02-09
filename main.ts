@@ -52,7 +52,7 @@ import { createOpenRouter, OpenRouterProvider } from "@openrouter/ai-sdk-provide
 import { createOpenAICompatible, OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.67",
+    caret_version: "0.2.68",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -2722,11 +2722,8 @@ version: 1
                 local_system_prompt = node.text;
             }
         }
-        console.log("Pre update");
-        console.log({ local_system_prompt });
+
         local_system_prompt = await this.getRefBlocksContent(local_system_prompt);
-        console.log("Post update");
-        console.log({ local_system_prompt });
 
         conversation.reverse();
         if (local_system_prompt.length > 0) {
