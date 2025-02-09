@@ -52,7 +52,7 @@ import { createOpenRouter, OpenRouterProvider } from "@openrouter/ai-sdk-provide
 import { createOpenAICompatible, OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.66",
+    caret_version: "0.2.67",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -2320,11 +2320,12 @@ version: 1
             if (node) {
                 let nodeContent = "";
                 const data: UnknownData = node.unknownData;
+
                 if (data.role === "") {
-                    if (node.type === "text") {
-                        nodeContent = node.text || "";
+                    if (data.type === "text") {
+                        nodeContent = data.text || "";
                         if (this.settings.include_nested_block_refs) {
-                            const block_ref_content = await this.getRefBlocksContent(node.text);
+                            const block_ref_content = await this.getRefBlocksContent(data.text);
                             nodeContent += block_ref_content;
                         }
                     } else if (data.type === "file") {
@@ -2456,6 +2457,13 @@ version: 1
                             system_prompt = system_prompt_list[0]._.trim;
                         }
 
+                        if (this.settings.include_nested_block_refs) {
+                            const block_ref_content = await this.getRefBlocksContent(system_prompt);
+                            if (block_ref_content.length > 0) {
+                                system_prompt += block_ref_content;
+                            }
+                        }
+
                         const prompts = xml.root.prompt;
                         const card_height = node.height;
                         const middle_index = Math.floor(prompts.length / 2);
@@ -2523,6 +2531,12 @@ version: 1
                         let system_prompt;
                         if (system_prompt_list[0]._) {
                             system_prompt = system_prompt_list[0]._.trim();
+                        }
+                        if (this.settings.include_nested_block_refs) {
+                            const block_ref_content = await this.getRefBlocksContent(system_prompt);
+                            if (block_ref_content.length > 0) {
+                                system_prompt += block_ref_content;
+                            }
                         }
 
                         const prompts = xml.root.prompt;
@@ -2708,6 +2722,12 @@ version: 1
                 local_system_prompt = node.text;
             }
         }
+        console.log("Pre update");
+        console.log({ local_system_prompt });
+        local_system_prompt = await this.getRefBlocksContent(local_system_prompt);
+        console.log("Post update");
+        console.log({ local_system_prompt });
+
         conversation.reverse();
         if (local_system_prompt.length > 0) {
             conversation.unshift({ role: "system", content: local_system_prompt });

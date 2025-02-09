@@ -123,6 +123,7 @@ export async function ai_sdk_completion(
 ): Promise<string> {
     new Notice(`Calling ${provider_name[0].toUpperCase() + provider_name.slice(1)}`);
     const formattedPrompt = conversation.map((msg) => `${msg.role}: ${msg.content}`).join("\n");
+    console.log({ conversation });
 
     if (provider_name === "openrouter") {
         const openrouter_provider = provider as OpenRouterProvider;
