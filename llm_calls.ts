@@ -161,6 +161,7 @@ export async function ai_sdk_structured<T extends z.ZodType>(
             schema,
             prompt: formattedPrompt,
             temperature,
+            mode: "json",
         });
 
         return response;
