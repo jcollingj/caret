@@ -73,6 +73,8 @@ export class CaretSettingTab extends PluginSettingTab {
         }
 
         let context_window = null;
+        let custom_endpoint = null;
+
         try {
             const llm_provider = this.plugin.settings.llm_provider;
             const model = this.plugin.settings.model;
@@ -85,6 +87,9 @@ export class CaretSettingTab extends PluginSettingTab {
                     const context_window_value = model_details.context_window;
                     context_window = parseInt(context_window_value.toString());
                 }
+            }
+            if (this.plugin.settings.custom_endpoints[model]){
+                custom_endpoint = this.plugin.settings.custom_endpoints[model].endpoint;
             }
         } catch (error) {
             console.error("Error retrieving model details:", error);
@@ -127,6 +132,7 @@ export class CaretSettingTab extends PluginSettingTab {
                         this.display();
                     });
             });
+        
         const setting = new Setting(containerEl).setName("Model").addDropdown((modelDropdown) => {
             modelDropdown.addOptions(model_options_data);
             modelDropdown.setValue(this.plugin.settings.model);
@@ -147,9 +153,14 @@ export class CaretSettingTab extends PluginSettingTab {
                 );
         }
 
-        if (context_window) {
-            setting.setDesc(`FYI your selected model has a context window of ${context_window}`);
+        if (context_window && !custom_endpoint) {
+            setting.setDesc(`FYI the selected model has a context window of ${context_window}`);
+          } else if (!context_window && custom_endpoint) {
+            setting.setDesc(`FYI the selected model has a custom endpoint of ${custom_endpoint}`);
+          } else if (context_window && custom_endpoint) {
+            setting.setDesc(`FYI the selected model has a context window of ${context_window} and a custom endpoint of ${custom_endpoint}`);
         }
+        
         if (this.plugin.settings.llm_provider === "ollama") {
             const ollama_info_container = containerEl.createEl("div", {
                 cls: "caret-settings_container",
@@ -174,10 +185,8 @@ export class CaretSettingTab extends PluginSettingTab {
             code_block_container.createEl("code", {
                 text: "OLLAMA_ORIGINS=app://obsidian.md* ollama serve",
             });
-
-            ollama_info_container.createEl("br"); // Adds a line break for spacing
+            ollama_info_container.createEl("p", { text: "If your Ollama is not installed locally, use the custom model function to define model and endpoint." });
         }
-
         new Setting(containerEl)
             .setName("OpenAI API key")
             .setDesc("")
