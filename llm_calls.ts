@@ -44,6 +44,9 @@ export function get_provider(plugin: CaretPlugin, provider: eligible_provider): 
         case "groq":
             return plugin.groq_client;
         case "ollama":
+            if (plugin.settings.custom_endpoints[plugin.settings.model]) {
+                plugin.ollama_client = createOllama({baseURL: plugin.settings.custom_endpoints[plugin.settings.model].endpoint+"/api"});
+            }
             return plugin.ollama_client;
         case "openrouter":
             return plugin.openrouter_client;
