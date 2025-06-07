@@ -7,6 +7,7 @@ import {
     isEligibleProvider,
     ai_sdk_completion,
     ai_sdk_structured,
+    ai_sdk_image_gen,
 } from "./llm_calls";
 
 // // @ts-ignore
@@ -14,7 +15,7 @@ import {
 import { encodingForModel } from "js-tiktoken";
 import OpenAI from "openai";
 import { around } from "monkey-around";
-import { Canvas, ViewportNode, Message, Node, Edge, SparkleConfig, UnknownData } from "./types";
+import { Canvas, ViewportNode, Message, Node, Edge, SparkleConfig, UnknownData, ImageModelOptions } from "./types";
 import {
     MarkdownView,
     Modal,
@@ -50,6 +51,7 @@ import { GroqProvider, createGroq } from "@ai-sdk/groq";
 import { createOllama, OllamaProvider } from "ollama-ai-provider";
 import { createOpenRouter, OpenRouterProvider } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible, OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
+import { createXai, xai, XaiProvider } from "@ai-sdk/xai";
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
     caret_version: "0.2.70",
@@ -61,8 +63,10 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
     llm_provider: "openai",
     openai_api_key: "",
     groq_api_key: "",
+
     anthropic_api_key: "",
     open_router_key: "",
+    xai_api_key: "",
     context_window: 128000,
     custom_endpoints: {},
     system_prompt: "",
@@ -445,6 +449,30 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
     include_nested_block_refs: true,
     google_api_key: "",
     perplexity_api_key: "",
+    image_model: "dall-e-3",
+    image_provider: "openai",
+    image_model_options: {
+        openai: {
+            "gpt-image-1": {
+                name: "GPT Image 1",
+                supported_sizes: ["1024x1024", "1536x1024", "1024x1536"],
+            },
+            "dall-e-3": {
+                name: "DALL-E 3",
+                supported_sizes: ["1024x1024", "1792x1024", "1024x1792"],
+            },
+        },
+        xai: {
+            "grok-2-image": {
+                name: "Grok 2 Image",
+                supported_sizes: ["1024x768"],
+            },
+        },
+    },
+    image_provider_dropdown_options: {
+        openai: "OpenAI",
+        xai: "xAI Grok",
+    },
 };
 
 export default class CaretPlugin extends Plugin {
@@ -462,6 +490,7 @@ export default class CaretPlugin extends Plugin {
     google_client: GoogleGenerativeAIProvider;
     custom_client: OpenAICompatibleProvider | undefined | null;
     perplexity_client: OpenAICompatibleProvider;
+    xai_client: XaiProvider;
 
     async onload() {
         // Initalize extra icons
@@ -510,6 +539,12 @@ export default class CaretPlugin extends Plugin {
                 apiKey: this.settings.perplexity_api_key,
                 baseURL: "https://api.perplexity.ai/",
                 name: "perplexity",
+            });
+        }
+
+        if (this.settings.xai_api_key) {
+            this.xai_client = createXai({
+                apiKey: this.settings.xai_api_key,
             });
         }
 
@@ -1784,28 +1819,475 @@ version: 1
                     {
                         name: "Log",
                         icon: "lucide-file-text",
-                        tooltip: "Set role to log",
+                        tooltip: "Log data about current node.",
                         callback: () => {
-                            // Get the active selection from the document
-                            const selection = document.getSelection();
-                            if (selection && selection.toString()) {
-                                // Copy selected text to clipboard
-                                navigator.clipboard
-                                    .writeText(selection.toString())
-                                    .then(() => {
-                                        new Notice("Copied selection to clipboard");
-                                    })
-                                    .catch((err) => {
-                                        console.error("Failed to copy text: ", err);
-                                        new Notice("Failed to copy to clipboard");
-                                    });
-                            } else {
-                                new Notice("No text selected");
+                            let output = "=== NODE INSPECTION ===\n\n";
+
+                            // 1. Node object basic info
+                            output += `Constructor name: ${node.constructor.name}\n`;
+                            output += `Node ID: ${node.id}\n`;
+                            output += `Node type: ${node.type}\n\n`;
+
+                            // 2. All own properties
+                            const ownProps = Object.getOwnPropertyNames(node);
+                            output += `Own properties (${ownProps.length}):\n`;
+                            ownProps.forEach((prop) => {
+                                const value = node[prop];
+                                const type = typeof value;
+                                output += `  ${prop}: ${type}`;
+                                if (type === "string" || type === "number" || type === "boolean") {
+                                    output += ` = ${JSON.stringify(value)}`;
+                                } else if (type === "object" && value !== null) {
+                                    output += ` = ${Object.prototype.toString.call(value)}`;
+                                }
+                                output += `\n`;
+                            });
+                            output += `\n`;
+
+                            // 3. All methods available on the node
+                            const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(node))
+                                .filter((name) => typeof node[name] === "function")
+                                .filter((name) => name !== "constructor");
+                            output += `Available methods (${methods.length}):\n`;
+                            methods.forEach((method) => {
+                                output += `  ${method}()\n`;
+                            });
+                            output += `\n`;
+
+                            // 4. Property descriptors for key properties
+                            const keyProps = ["text", "type", "id", "x", "y", "width", "height", "unknownData"];
+                            output += `Key property descriptors:\n`;
+                            keyProps.forEach((prop) => {
+                                if (prop in node) {
+                                    const descriptor = Object.getOwnPropertyDescriptor(node, prop);
+                                    output += `  ${prop}: writable=${descriptor?.writable}, enumerable=${descriptor?.enumerable}, configurable=${descriptor?.configurable}\n`;
+                                }
+                            });
+                            output += `\n`;
+
+                            // 5. Prototype chain
+                            output += `Prototype chain:\n`;
+                            let proto = Object.getPrototypeOf(node);
+                            let level = 0;
+                            while (proto && level < 5) {
+                                output += `  Level ${level}: ${proto.constructor.name}\n`;
+                                proto = Object.getPrototypeOf(proto);
+                                level++;
+                            }
+                            output += `\n`;
+
+                            // 6. Unknown data contents
+                            if (node.unknownData) {
+                                output += `unknownData contents:\n`;
+                                Object.keys(node.unknownData).forEach((key) => {
+                                    const value = node.unknownData[key];
+                                    output += `  ${key}: ${typeof value} = ${JSON.stringify(value)}\n`;
+                                });
+                                output += `\n`;
                             }
 
-                            node.unknownData.role = "log";
-                            node.unknownData.displayOverride = false;
-                            canvas.requestFrame();
+                            output += "=== END NODE INSPECTION ===";
+
+                            console.log(output);
+                        },
+                    },
+                    {
+                        name: "Log Canvas",
+                        icon: "lucide-layout-grid",
+                        tooltip: "Log comprehensive canvas data",
+                        callback: async () => {
+                            let output = "=== CANVAS INSPECTION ===\n\n";
+
+                            // 1. Basic canvas info
+                            const canvas_data = canvas.getData();
+                            const all_nodes = await this.getAllNodesFullData(canvas);
+
+                            output += `Canvas basic info:\n`;
+                            output += `  Total nodes: ${canvas_data.nodes.length}\n`;
+                            output += `  Total edges: ${canvas_data.edges.length}\n`;
+                            output += `  Canvas object type: ${canvas.constructor.name}\n\n`;
+
+                            // 2. Canvas properties
+                            output += `Canvas properties:\n`;
+                            const canvasProps = Object.getOwnPropertyNames(canvas);
+                            canvasProps.forEach((prop) => {
+                                const value = canvas[prop];
+                                const type = typeof value;
+                                output += `  ${prop}: ${type}`;
+                                if (type === "string" || type === "number" || type === "boolean") {
+                                    output += ` = ${JSON.stringify(value)}`;
+                                } else if (type === "object" && value !== null) {
+                                    output += ` = ${Object.prototype.toString.call(value)}`;
+                                }
+                                output += `\n`;
+                            });
+                            output += `\n`;
+
+                            // 3. Canvas methods
+                            const canvasMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(canvas))
+                                .filter((name) => typeof canvas[name] === "function")
+                                .filter((name) => name !== "constructor");
+                            output += `Canvas methods (${canvasMethods.length}):\n`;
+                            canvasMethods.forEach((method) => {
+                                output += `  ${method}()\n`;
+                            });
+                            output += `\n`;
+
+                            // 4. Nodes summary
+                            output += `Nodes summary:\n`;
+                            const nodesByType: Record<string, number> = {};
+                            const nodesByRole: Record<string, number> = {};
+
+                            all_nodes.forEach((node) => {
+                                // Group by type
+                                const type = node.type || "unknown";
+                                nodesByType[type] = (nodesByType[type] || 0) + 1;
+
+                                // Group by role if it exists
+                                const role = node.unknownData?.role || "none";
+                                nodesByRole[role] = (nodesByRole[role] || 0) + 1;
+                            });
+
+                            output += `  By type:\n`;
+                            Object.entries(nodesByType).forEach(([type, count]) => {
+                                output += `    ${type}: ${count}\n`;
+                            });
+
+                            output += `  By role:\n`;
+                            Object.entries(nodesByRole).forEach(([role, count]) => {
+                                output += `    ${role}: ${count}\n`;
+                            });
+                            output += `\n`;
+
+                            // 5. Edges summary
+                            output += `Edges summary:\n`;
+                            const edgesBySide: Record<string, number> = {};
+                            canvas_data.edges.forEach((edge: any) => {
+                                const connection = `${edge.fromSide}->${edge.toSide}`;
+                                edgesBySide[connection] = (edgesBySide[connection] || 0) + 1;
+                            });
+
+                            output += `  By connection type:\n`;
+                            Object.entries(edgesBySide).forEach(([connection, count]) => {
+                                output += `    ${connection}: ${count}\n`;
+                            });
+                            output += `\n`;
+
+                            // 6. Individual nodes details
+                            output += `Individual nodes (first 10):\n`;
+                            all_nodes.slice(0, 10).forEach((node, index) => {
+                                output += `  Node ${index + 1}:\n`;
+                                output += `    ID: ${node.id}\n`;
+                                output += `    Type: ${node.type}\n`;
+                                output += `    Position: (${node.x}, ${node.y})\n`;
+                                output += `    Size: ${node.width}x${node.height}\n`;
+                                output += `    Role: ${node.unknownData?.role || "none"}\n`;
+                                if (node.text) {
+                                    const preview = node.text.substring(0, 50) + (node.text.length > 50 ? "..." : "");
+                                    output += `    Text preview: "${preview}"\n`;
+                                }
+                                output += `\n`;
+                            });
+
+                            if (all_nodes.length > 10) {
+                                output += `  ... and ${all_nodes.length - 10} more nodes\n\n`;
+                            }
+
+                            // 7. Canvas selection info
+                            if (canvas.selection && canvas.selection.size > 0) {
+                                output += `Current selection:\n`;
+                                output += `  Selected items: ${canvas.selection.size}\n`;
+                                const selection_iterator = canvas.selection.values();
+                                for (const selected of selection_iterator) {
+                                    output += `    - ${selected.constructor.name} (ID: ${selected.id})\n`;
+                                }
+                                output += `\n`;
+                            }
+
+                            // 8. File node creation analysis
+                            output += `File node creation analysis:\n`;
+
+                            // Check if createFileNode method exists
+                            if (typeof canvas.createFileNode === "function") {
+                                output += `  createFileNode method: EXISTS\n`;
+                                output += `  createFileNode toString: ${canvas.createFileNode
+                                    .toString()
+                                    .substring(0, 200)}...\n`;
+                            } else {
+                                output += `  createFileNode method: NOT FOUND\n`;
+                            }
+
+                            // Check existing file nodes for reference
+                            const fileNodes = all_nodes.filter(
+                                (node) => node.type === "file" || node.file || (node as any).filePath
+                            );
+                            output += `  Existing file nodes: ${fileNodes.length}\n`;
+                            fileNodes.forEach((node, index) => {
+                                output += `    File node ${index + 1}:\n`;
+                                output += `      ID: ${node.id}\n`;
+                                output += `      Type: ${node.type}\n`;
+                                output += `      File: ${node.file || "none"}\n`;
+                                output += `      FilePath: ${(node as any).filePath || "none"}\n`;
+                                output += `      Constructor: ${node.constructor.name}\n`;
+
+                                // Log all properties of the node
+                                output += `      All properties:\n`;
+                                Object.getOwnPropertyNames(node).forEach((prop) => {
+                                    const value = (node as any)[prop];
+                                    const type = typeof value;
+                                    output += `        ${prop}: ${type}`;
+                                    if (type === "string" || type === "number" || type === "boolean") {
+                                        output += ` = ${JSON.stringify(value)}`;
+                                    } else if (type === "object" && value !== null) {
+                                        if (prop === "file" && value.getShortName) {
+                                            output += ` = File object with getShortName()`;
+                                        } else {
+                                            output += ` = ${Object.prototype.toString.call(value)}`;
+                                        }
+                                    }
+                                    output += `\n`;
+                                });
+
+                                // Check if file property has required methods
+                                if (node.file) {
+                                    output += `      File object analysis:\n`;
+                                    output += `        File type: ${typeof node.file}\n`;
+                                    output += `        File constructor: ${node.file.constructor?.name || "unknown"}\n`;
+                                    output += `        Has getShortName: ${
+                                        typeof (node.file as any).getShortName === "function"
+                                    }\n`;
+                                    if (typeof (node.file as any).getShortName === "function") {
+                                        try {
+                                            output += `        getShortName(): ${(node.file as any).getShortName()}\n`;
+                                        } catch (e) {
+                                            output += `        getShortName() error: ${e}\n`;
+                                        }
+                                    }
+                                    output += `        File methods: ${Object.getOwnPropertyNames(
+                                        Object.getPrototypeOf(node.file)
+                                    ).filter((name) => typeof (node.file as any)[name] === "function")}\n`;
+                                }
+
+                                if (node.unknownData) {
+                                    output += `      UnknownData full structure:\n`;
+                                    Object.keys(node.unknownData).forEach((key) => {
+                                        const value = (node.unknownData as any)[key];
+                                        output += `        ${key}: ${typeof value} = ${JSON.stringify(value)}\n`;
+                                    });
+                                }
+                                output += `\n`;
+                            });
+
+                            // 9. Experimental file node creation
+                            output += `Experimental file node creation attempt:\n`;
+                            try {
+                                const imagePath = "Screenshot 2024-09-06 at 11.41.57 AM.png";
+                                output += `  Target image path: ${imagePath}\n`;
+
+                                // Try to call createFileNode if it exists
+                                if (typeof canvas.createFileNode === "function") {
+                                    output += `  Attempting createFileNode...\n`;
+
+                                    // Try different parameter combinations
+                                    const testConfigs = [
+                                        { pos: { x: 100, y: 100 }, size: { width: 400, height: 300 }, file: imagePath },
+                                        { x: 100, y: 100, width: 400, height: 300, file: imagePath },
+                                        { file: imagePath, x: 100, y: 100 },
+                                    ];
+
+                                    testConfigs.forEach((config, index) => {
+                                        try {
+                                            output += `    Test config ${index + 1}: ${JSON.stringify(config)}\n`;
+                                            // We'll just log the attempt here, not actually create the node yet
+                                            output += `    Config type: ${typeof config}\n`;
+                                        } catch (error) {
+                                            output += `    Test config ${index + 1} failed: ${error}\n`;
+                                        }
+                                    });
+                                } else {
+                                    output += `  createFileNode not available\n`;
+                                }
+
+                                // Check canvas data structure for clues
+                                output += `  Canvas data structure:\n`;
+                                if (canvas_data.nodes.length > 0) {
+                                    const sampleNode = canvas_data.nodes[0];
+                                    output += `    Sample node structure: ${JSON.stringify(
+                                        sampleNode,
+                                        null,
+                                        2
+                                    ).substring(0, 300)}...\n`;
+                                }
+                            } catch (error) {
+                                output += `  Experimental creation failed: ${error}\n`;
+                            }
+
+                            output += "=== END CANVAS INSPECTION ===";
+
+                            console.log(output);
+                        },
+                    },
+                    {
+                        name: "Generate Image",
+                        icon: "lucide-image",
+                        tooltip: "Generate image from prompt and create file node",
+                        callback: async () => {
+                            try {
+                                // Get the prompt from the node text
+                                const prompt = node.text || node.unknownData.text || "";
+                                if (!prompt.trim()) {
+                                    new Notice("No prompt found in node text!");
+                                    return;
+                                }
+
+                                new Notice("Generating image...");
+                                console.log("Generating image with prompt:", prompt);
+
+                                // Generate the image using selected provider and model
+                                const imageProvider = this.getImageProvider();
+                                if (!imageProvider) {
+                                    new Notice(`Image provider ${this.settings.image_provider} not configured!`);
+                                    return;
+                                }
+                                new Notice(`Using model: ${this.settings.image_model}`);
+
+                                const base64 = await ai_sdk_image_gen({
+                                    prompt,
+                                    provider: imageProvider,
+                                    model: this.settings.image_model,
+                                });
+
+                                // Create filename from first 4 words of prompt
+                                const words = prompt.trim().split(/\s+/).slice(0, 4);
+                                const baseName = words
+                                    .join("_")
+                                    .toLowerCase()
+                                    .replace(/[^a-zA-Z0-9_]/g, "");
+                                const ext = ".png";
+
+                                // Ensure caret-images folder exists
+                                const imageFolder = "caret-images";
+                                const folder = this.app.vault.getAbstractFileByPath(imageFolder);
+                                if (!folder) {
+                                    await this.app.vault.createFolder(imageFolder);
+                                }
+
+                                // Find unique filename
+                                let fileName = `${baseName}${ext}`;
+                                let filePath = `${imageFolder}/${fileName}`;
+                                let counter = 1;
+                                let fileExistsCheck = this.app.vault.getFileByPath(filePath);
+                                while (fileExistsCheck) {
+                                    fileName = `${baseName}_${counter}${ext}`;
+                                    filePath = `${imageFolder}/${fileName}`;
+                                    fileExistsCheck = this.app.vault.getFileByPath(filePath);
+                                    counter++;
+                                }
+
+                                // Save the image file
+                                await this.app.vault.createBinary(filePath, base64);
+                                const fileObj = this.app.vault.getFileByPath(filePath);
+
+                                if (!fileObj) {
+                                    new Notice("Failed to save image file!");
+                                    return;
+                                }
+
+                                new Notice("Image generated! Creating file node...");
+
+                                // Create file node on canvas
+                                let success = false;
+
+                                // Method 1: Try using canvas.createFileNode with proper file object
+                                if (!success && typeof canvas.createFileNode === "function") {
+                                    console.log("Method 1: Using canvas.createFileNode with file object");
+                                    const fileNodeConfig = {
+                                        pos: { x: node.x + node.width + 50, y: node.y },
+                                        size: { width: 400, height: 300 },
+                                        file: fileObj,
+                                    };
+                                    try {
+                                        const newFileNode = canvas.createFileNode(fileNodeConfig);
+                                        console.log("Created file node:", newFileNode);
+                                        success = true;
+                                    } catch (e) {
+                                        console.error("createFileNode failed:", e);
+                                    }
+                                }
+
+                                // Method 2: Try using addNodeToCanvas with file object (fallback)
+                                if (!success) {
+                                    console.log("Method 2: Using addNodeToCanvas with file object");
+                                    try {
+                                        const fileNodeData = await this.addNodeToCanvas(
+                                            canvas,
+                                            this.generateRandomId(16),
+                                            {
+                                                x: node.x + node.width + 50,
+                                                y: node.y,
+                                                width: 400,
+                                                height: 300,
+                                                type: "file",
+                                                content: fileObj.path,
+                                            }
+                                        );
+
+                                        // Set the proper file object on the canvas node
+                                        const canvasNode = canvas.nodes?.get(fileNodeData?.id!);
+                                        if (canvasNode) {
+                                            canvasNode.file = fileObj;
+                                            console.log("Set file object on canvas node");
+                                        }
+                                        success = true;
+                                    } catch (e) {
+                                        console.error("addNodeToCanvas failed:", e);
+                                    }
+                                }
+
+                                // Method 3: Try direct canvas.importData with file object (last resort)
+                                if (!success) {
+                                    console.log("Method 3: Using canvas.importData with file object");
+                                    try {
+                                        const canvas_data = canvas.getData();
+                                        const fileNodeDirect = {
+                                            id: this.generateRandomId(16),
+                                            x: node.x + node.width + 50,
+                                            y: node.y,
+                                            width: 400,
+                                            height: 300,
+                                            type: "file",
+                                            file: fileObj.path,
+                                        };
+
+                                        canvas.importData({
+                                            nodes: [...canvas_data.nodes, fileNodeDirect],
+                                            edges: canvas_data.edges,
+                                        });
+
+                                        // After import, set the proper file object
+                                        const canvasNode = canvas.nodes?.get(fileNodeDirect.id);
+                                        if (canvasNode) {
+                                            canvasNode.file = fileObj;
+                                            console.log("Set file object on imported node");
+                                        }
+
+                                        success = true;
+                                    } catch (e) {
+                                        console.error("importData method failed:", e);
+                                    }
+                                }
+
+                                if (success) {
+                                    new Notice("Image generated and file node created!");
+                                } else {
+                                    new Notice("Image generated but failed to create file node!");
+                                }
+
+                                canvas.requestFrame();
+                            } catch (error) {
+                                console.error("Image generation failed:", error);
+                                new Notice(`Image generation failed: ${error.message}`);
+                            }
                         },
                     },
                     {
@@ -1832,6 +2314,7 @@ version: 1
                             });
                         },
                     },
+
                     {
                         name: "Double Sparkle",
                         icon: "lucide-sparkle",
@@ -3059,5 +3542,16 @@ version: 1
 
     async saveSettings() {
         await this.saveData(this.settings);
+    }
+
+    getImageProvider() {
+        switch (this.settings.image_provider) {
+            case "openai":
+                return this.openai_client;
+            case "xai":
+                return this.xai_client;
+            default:
+                return null;
+        }
     }
 }

@@ -125,6 +125,17 @@ export interface LLMProviderOptions {
     };
 }
 
+export interface ImageModel {
+    name: string;
+    supported_sizes: string[];
+}
+
+export interface ImageModelOptions {
+    [key: string]: {
+        [model: string]: ImageModel;
+    };
+}
+
 export interface NewNode {
     x: number;
     y: number;
@@ -150,8 +161,10 @@ export interface CaretPluginSettings {
     llm_provider: string;
     openai_api_key: string;
     groq_api_key: string;
+
     open_router_key: string;
     anthropic_api_key: string;
+    xai_api_key: string;
     context_window: number;
     custom_endpoints: { [model: string]: CustomModels };
     system_prompt: string;
@@ -161,4 +174,9 @@ export interface CaretPluginSettings {
     include_nested_block_refs: boolean;
     google_api_key: string;
     perplexity_api_key: string;
+
+    image_model: string;
+    image_provider: string;
+    image_model_options: ImageModelOptions;
+    image_provider_dropdown_options: { [key: string]: string };
 }
