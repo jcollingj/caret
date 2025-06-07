@@ -150,6 +150,54 @@ export class CaretSettingTab extends PluginSettingTab {
         if (context_window) {
             setting.setDesc(`FYI your selected model has a context window of ${context_window}`);
         }
+
+        // Image Model Settings
+
+        new Setting(containerEl)
+            .setName("Image provider")
+            .setDesc("Choose the provider for image generation")
+            .addDropdown((dropdown) => {
+                dropdown
+                    .addOptions(this.plugin.settings.image_provider_dropdown_options)
+                    .setValue(this.plugin.settings.image_provider)
+                    .onChange(async (provider) => {
+                        this.plugin.settings.image_provider = provider;
+                        this.plugin.settings.image_model = Object.keys(
+                            this.plugin.settings.image_model_options[provider]
+                        )[0];
+                        await this.plugin.saveSettings();
+                        await this.plugin.loadSettings();
+                        this.display();
+                    });
+            });
+
+        const image_model_options_data = Object.fromEntries(
+            Object.entries(
+                this.plugin.settings.image_model_options[
+                    this.plugin.settings.image_provider as keyof typeof this.plugin.settings.image_model_options
+                ]
+            ).map(([key, value]) => [key, value.name])
+        );
+
+        const imageModelSetting = new Setting(containerEl).setName("Image model").addDropdown((modelDropdown) => {
+            modelDropdown.addOptions(image_model_options_data);
+            modelDropdown.setValue(this.plugin.settings.image_model);
+            modelDropdown.onChange(async (value) => {
+                this.plugin.settings.image_model = value;
+                await this.plugin.saveSettings();
+                await this.plugin.loadSettings();
+                this.display();
+            });
+        });
+
+        // Show supported sizes for the selected image model
+        const selectedImageModel =
+            this.plugin.settings.image_model_options[this.plugin.settings.image_provider][
+                this.plugin.settings.image_model
+            ];
+        // if (selectedImageModel && selectedImageModel.supported_sizes) {
+        //     imageModelSetting.setDesc(`Supported sizes: ${selectedImageModel.supported_sizes.join(", ")}`);
+        // }
         if (this.plugin.settings.llm_provider === "ollama") {
             const ollama_info_container = containerEl.createEl("div", {
                 cls: "caret-settings_container",
@@ -254,6 +302,20 @@ export class CaretSettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.perplexity_api_key)
                     .onChange(async (value: string) => {
                         this.plugin.settings.perplexity_api_key = value;
+                        await this.plugin.saveSettings();
+                        await this.plugin.loadSettings();
+                    });
+                text.inputEl.addClass("caret-hidden-value-unsecure");
+            });
+
+        new Setting(containerEl)
+            .setName("xAI API key")
+            .setDesc("")
+            .addText((text) => {
+                text.setPlaceholder("xAI API key")
+                    .setValue(this.plugin.settings.xai_api_key)
+                    .onChange(async (value: string) => {
+                        this.plugin.settings.xai_api_key = value;
                         await this.plugin.saveSettings();
                         await this.plugin.loadSettings();
                     });

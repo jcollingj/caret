@@ -15,7 +15,7 @@ import {
 import { encodingForModel } from "js-tiktoken";
 import OpenAI from "openai";
 import { around } from "monkey-around";
-import { Canvas, ViewportNode, Message, Node, Edge, SparkleConfig, UnknownData } from "./types";
+import { Canvas, ViewportNode, Message, Node, Edge, SparkleConfig, UnknownData, ImageModelOptions } from "./types";
 import {
     MarkdownView,
     Modal,
@@ -51,6 +51,7 @@ import { GroqProvider, createGroq } from "@ai-sdk/groq";
 import { createOllama, OllamaProvider } from "ollama-ai-provider";
 import { createOpenRouter, OpenRouterProvider } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible, OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
+import { createXai, xai, XaiProvider } from "@ai-sdk/xai";
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
     caret_version: "0.2.70",
@@ -62,8 +63,10 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
     llm_provider: "openai",
     openai_api_key: "",
     groq_api_key: "",
+
     anthropic_api_key: "",
     open_router_key: "",
+    xai_api_key: "",
     context_window: 128000,
     custom_endpoints: {},
     system_prompt: "",
@@ -446,6 +449,30 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
     include_nested_block_refs: true,
     google_api_key: "",
     perplexity_api_key: "",
+    image_model: "dall-e-3",
+    image_provider: "openai",
+    image_model_options: {
+        openai: {
+            "gpt-image-1": {
+                name: "GPT Image 1",
+                supported_sizes: ["1024x1024", "1536x1024", "1024x1536"],
+            },
+            "dall-e-3": {
+                name: "DALL-E 3",
+                supported_sizes: ["1024x1024", "1792x1024", "1024x1792"],
+            },
+        },
+        xai: {
+            "grok-2-image": {
+                name: "Grok 2 Image",
+                supported_sizes: ["1024x768"],
+            },
+        },
+    },
+    image_provider_dropdown_options: {
+        openai: "OpenAI",
+        xai: "xAI Grok",
+    },
 };
 
 export default class CaretPlugin extends Plugin {
@@ -463,6 +490,7 @@ export default class CaretPlugin extends Plugin {
     google_client: GoogleGenerativeAIProvider;
     custom_client: OpenAICompatibleProvider | undefined | null;
     perplexity_client: OpenAICompatibleProvider;
+    xai_client: XaiProvider;
 
     async onload() {
         // Initalize extra icons
@@ -511,6 +539,12 @@ export default class CaretPlugin extends Plugin {
                 apiKey: this.settings.perplexity_api_key,
                 baseURL: "https://api.perplexity.ai/",
                 name: "perplexity",
+            });
+        }
+
+        if (this.settings.xai_api_key) {
+            this.xai_client = createXai({
+                apiKey: this.settings.xai_api_key,
             });
         }
 
@@ -2109,8 +2143,19 @@ version: 1
                                 new Notice("Generating image...");
                                 console.log("Generating image with prompt:", prompt);
 
-                                // Generate the image
-                                const base64 = await ai_sdk_image_gen({ prompt, provider: this.openai_client });
+                                // Generate the image using selected provider and model
+                                const imageProvider = this.getImageProvider();
+                                if (!imageProvider) {
+                                    new Notice(`Image provider ${this.settings.image_provider} not configured!`);
+                                    return;
+                                }
+                                new Notice(`Using model: ${this.settings.image_model}`);
+
+                                const base64 = await ai_sdk_image_gen({
+                                    prompt,
+                                    provider: imageProvider,
+                                    model: this.settings.image_model,
+                                });
 
                                 // Create filename from first 4 words of prompt
                                 const words = prompt.trim().split(/\s+/).slice(0, 4);
@@ -3497,5 +3542,16 @@ version: 1
 
     async saveSettings() {
         await this.saveData(this.settings);
+    }
+
+    getImageProvider() {
+        switch (this.settings.image_provider) {
+            case "openai":
+                return this.openai_client;
+            case "xai":
+                return this.xai_client;
+            default:
+                return null;
+        }
     }
 }
