@@ -184,8 +184,11 @@ export async function ai_sdk_structured<T extends z.ZodType>(
 
 export async function ai_sdk_image_gen(params: { provider: image_provider; prompt: string; model: string }) {
     // Implementation to be added
+    const model = params.model;
+    console.log("Generating image...");
+    console.log({ model });
     const { image } = await generateImage({
-        model: params.provider.image(params.model),
+        model: params.provider.image(model),
         prompt: params.prompt,
     });
     const arrayBuffer = image.uint8Array;
