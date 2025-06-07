@@ -7,6 +7,7 @@ import {
     isEligibleProvider,
     ai_sdk_completion,
     ai_sdk_structured,
+    ai_sdk_image_gen,
 } from "./llm_calls";
 
 // // @ts-ignore
@@ -2093,46 +2094,76 @@ version: 1
                         },
                     },
                     {
-                        name: "Create Image Node",
-                        icon: "lucide-file-image",
-                        tooltip: "Test creating file node with image",
+                        name: "Generate Image",
+                        icon: "lucide-image",
+                        tooltip: "Generate image from prompt and create file node",
                         callback: async () => {
-                            const imagePath = "Screenshot 2024-09-06 at 11.41.57 AM.png";
-                            console.log("=== FILE NODE CREATION TEST ===");
-                            console.log(`Attempting to create file node with: ${imagePath}`);
-
                             try {
-                                // First, try to get the actual file object from the vault
-                                const fileObj = this.app.vault.getFileByPath(imagePath);
-                                console.log("File object from vault:", fileObj);
-                                console.log("File object type:", typeof fileObj);
-                                console.log("File object constructor:", fileObj?.constructor?.name);
-
-                                if (fileObj && typeof (fileObj as any).getShortName === "function") {
-                                    console.log("File has getShortName method:", (fileObj as any).getShortName());
-                                }
-
-                                if (!fileObj) {
-                                    console.error("File not found in vault:", imagePath);
-                                    new Notice("File not found in vault!");
+                                // Get the prompt from the node text
+                                const prompt = node.text || node.unknownData.text || "";
+                                if (!prompt.trim()) {
+                                    new Notice("No prompt found in node text!");
                                     return;
                                 }
 
+                                new Notice("Generating image...");
+                                console.log("Generating image with prompt:", prompt);
+
+                                // Generate the image
+                                const base64 = await ai_sdk_image_gen({ prompt, provider: this.openai_client });
+
+                                // Create filename from first 4 words of prompt
+                                const words = prompt.trim().split(/\s+/).slice(0, 4);
+                                const baseName = words
+                                    .join("_")
+                                    .toLowerCase()
+                                    .replace(/[^a-zA-Z0-9_]/g, "");
+                                const ext = ".png";
+
+                                // Ensure caret-images folder exists
+                                const imageFolder = "caret-images";
+                                const folder = this.app.vault.getAbstractFileByPath(imageFolder);
+                                if (!folder) {
+                                    await this.app.vault.createFolder(imageFolder);
+                                }
+
+                                // Find unique filename
+                                let fileName = `${baseName}${ext}`;
+                                let filePath = `${imageFolder}/${fileName}`;
+                                let counter = 1;
+                                let fileExistsCheck = this.app.vault.getFileByPath(filePath);
+                                while (fileExistsCheck) {
+                                    fileName = `${baseName}_${counter}${ext}`;
+                                    filePath = `${imageFolder}/${fileName}`;
+                                    fileExistsCheck = this.app.vault.getFileByPath(filePath);
+                                    counter++;
+                                }
+
+                                // Save the image file
+                                await this.app.vault.createBinary(filePath, base64);
+                                const fileObj = this.app.vault.getFileByPath(filePath);
+
+                                if (!fileObj) {
+                                    new Notice("Failed to save image file!");
+                                    return;
+                                }
+
+                                new Notice("Image generated! Creating file node...");
+
+                                // Create file node on canvas
                                 let success = false;
 
                                 // Method 1: Try using canvas.createFileNode with proper file object
                                 if (!success && typeof canvas.createFileNode === "function") {
                                     console.log("Method 1: Using canvas.createFileNode with file object");
                                     const fileNodeConfig = {
-                                        pos: { x: node.x + 100, y: node.y + 100 },
+                                        pos: { x: node.x + node.width + 50, y: node.y },
                                         size: { width: 400, height: 300 },
-                                        file: fileObj, // Use actual file object
+                                        file: fileObj,
                                     };
-                                    console.log("Config with file object:", fileNodeConfig);
                                     try {
                                         const newFileNode = canvas.createFileNode(fileNodeConfig);
                                         console.log("Created file node:", newFileNode);
-                                        new Notice("File node created with createFileNode!");
                                         success = true;
                                     } catch (e) {
                                         console.error("createFileNode failed:", e);
@@ -2147,23 +2178,21 @@ version: 1
                                             canvas,
                                             this.generateRandomId(16),
                                             {
-                                                x: node.x + 200,
-                                                y: node.y + 200,
+                                                x: node.x + node.width + 50,
+                                                y: node.y,
                                                 width: 400,
                                                 height: 300,
                                                 type: "file",
-                                                content: fileObj.path, // Use file path
+                                                content: fileObj.path,
                                             }
                                         );
-                                        console.log("Created file node via addNodeToCanvas:", fileNodeData);
 
-                                        // Now get the actual canvas node and set the file object properly
+                                        // Set the proper file object on the canvas node
                                         const canvasNode = canvas.nodes?.get(fileNodeData?.id!);
                                         if (canvasNode) {
-                                            canvasNode.file = fileObj; // Set proper file object
+                                            canvasNode.file = fileObj;
                                             console.log("Set file object on canvas node");
                                         }
-                                        new Notice("File node created with addNodeToCanvas!");
                                         success = true;
                                     } catch (e) {
                                         console.error("addNodeToCanvas failed:", e);
@@ -2177,12 +2206,12 @@ version: 1
                                         const canvas_data = canvas.getData();
                                         const fileNodeDirect = {
                                             id: this.generateRandomId(16),
-                                            x: node.x + 300,
-                                            y: node.y + 300,
+                                            x: node.x + node.width + 50,
+                                            y: node.y,
                                             width: 400,
                                             height: 300,
                                             type: "file",
-                                            file: fileObj.path, // Use file path in data
+                                            file: fileObj.path,
                                         };
 
                                         canvas.importData({
@@ -2193,29 +2222,27 @@ version: 1
                                         // After import, set the proper file object
                                         const canvasNode = canvas.nodes?.get(fileNodeDirect.id);
                                         if (canvasNode) {
-                                            canvasNode.file = fileObj; // Set proper file object
+                                            canvasNode.file = fileObj;
                                             console.log("Set file object on imported node");
                                         }
 
-                                        console.log("Created file node via importData:", fileNodeDirect);
-                                        new Notice("File node created with importData!");
                                         success = true;
                                     } catch (e) {
                                         console.error("importData method failed:", e);
                                     }
                                 }
 
-                                if (!success) {
-                                    new Notice("All file node creation methods failed!");
+                                if (success) {
+                                    new Notice("Image generated and file node created!");
+                                } else {
+                                    new Notice("Image generated but failed to create file node!");
                                 }
 
                                 canvas.requestFrame();
                             } catch (error) {
-                                console.error("File node creation failed:", error);
-                                new Notice(`File node creation failed: ${error.message}`);
+                                console.error("Image generation failed:", error);
+                                new Notice(`Image generation failed: ${error.message}`);
                             }
-
-                            console.log("=== END FILE NODE CREATION TEST ===");
                         },
                     },
                     {
@@ -2242,26 +2269,7 @@ version: 1
                             });
                         },
                     },
-                    {
-                        name: "Generate Image",
-                        icon: "lucide-image",
-                        tooltip: "Generates an image from the prompt",
-                        callback: () => {
-                            console.log("Generating image");
-                            node.unknownData.type = "file";
-                            node.unknownData.file = "Screenshot 2024-09-06 at 11.41.57 AM.png";
-                            node.unknownData.text = "This is a newww test";
 
-                            node.unknownData.displayOverride = false;
-                            canvas.requestFrame();
-                            // this.refreshNode(node.id, this.settings.system_prompt, {
-                            //     model: "default",
-                            //     provider: "default",
-                            //     temperature: 1,
-                            //     context_window: "default",
-                            // });
-                        },
-                    },
                     {
                         name: "Double Sparkle",
                         icon: "lucide-sparkle",

@@ -7,6 +7,7 @@ import { GroqProvider, createGroq } from "@ai-sdk/groq";
 import { createOllama, OllamaProvider, ollama } from "ollama-ai-provider";
 import { createOpenRouter, OpenRouterProvider } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible, OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
+import { experimental_generateImage as generateImage } from "ai";
 
 import { z } from "zod";
 import CaretPlugin from "main";
@@ -28,6 +29,8 @@ export type eligible_provider =
     | "openrouter"
     | "custom"
     | "perplexity";
+
+export type image_provider = OpenAIProvider;
 
 const refactored_providers = ["openai", "google", "anthropic", "groq", "ollama", "openrouter", "custom", "perplexity"];
 export const isEligibleProvider = (provider: string): provider is eligible_provider => {
@@ -176,4 +179,14 @@ export async function ai_sdk_structured<T extends z.ZodType>(
     });
 
     return response.object;
+}
+
+export async function ai_sdk_image_gen(params: { provider: image_provider; prompt: string }) {
+    // Implementation to be added
+    const { image } = await generateImage({
+        model: params.provider.image("dall-e-3"),
+        prompt: params.prompt,
+    });
+    const arrayBuffer = image.uint8Array;
+    return arrayBuffer;
 }
