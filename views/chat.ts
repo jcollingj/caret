@@ -8,7 +8,62 @@ import ChatComponent from "../components/chat";
 import { Message } from "../types";
 import { Notice, ItemView, WorkspaceLeaf } from "obsidian";
 import CaretPlugin from "../main";
+import { TFolder } from "obsidian";
+import { CoreMessage } from "ai";
+
 export const VIEW_CHAT = "main-caret";
+
+// Adicionar instrucoesBot como constante global no início do arquivo
+const instrucoesBot = `
+# Instruções para o Bot Integrado ao Obsidian
+
+## 1. Buscar Notas
+- Sempre que o usuário pedir para buscar notas (ex: "busque notas sobre ideias e projetos"), utilize a função de busca nas notas do Obsidian.
+- Liste as notas encontradas, mostrando nome e caminho.
+- Exemplo de resposta:
+
+> Foram encontradas 3 notas relacionadas a "ideias e projetos":
+> - Ideias2024.md (Ideias/Ideias2024.md)
+> - ProjetoApp.md (Projetos/ProjetoApp.md)
+> - Brainstorm.md (Brainstorm/Brainstorm.md)
+
+## 2. Resumir Notas
+- Se o usuário pedir um resumo (ex: "faça um resumo das notas"), leia o conteúdo das notas encontradas e gere um resumo automático.
+- Exemplo de resposta:
+
+> Resumo das notas:
+> - Ideias para novos aplicativos focados em acessibilidade.
+> - Projetos em andamento: App de tradução, Plataforma de cursos.
+> - Brainstorm inicial sobre funcionalidades inovadoras.
+
+## 3. Não pedir para o usuário colar ou enviar notas
+- Nunca peça para o usuário colar o texto das notas ou enviar arquivos, pois o bot já tem acesso ao vault do Obsidian.
+
+## 4. Perguntas Contextuais
+- Se o usuário pedir detalhes, análise ou contexto, busque nas notas e responda com base no conteúdo encontrado.
+- Exemplo:
+
+> "Quais projetos tratam de acessibilidade?"
+> - ProjetoApp.md: "Funcionalidades para deficientes visuais..."
+
+## 5. Sempre utilize as funções do plugin
+- Use as funções de busca, leitura e resumo das notas para responder.
+- Não responda como se não tivesse acesso ao conteúdo local.
+
+---
+
+**Respostas incorretas a evitar:**
+- "Me envie o texto das notas."
+- "Não tenho acesso aos seus arquivos."
+- "Cole aqui o conteúdo."
+`;
+
+function toCoreMessages(messages: any[]): CoreMessage[] {
+    return messages.filter(
+        (m) => m.role === "user" || m.role === "assistant" || m.role === "system"
+    );
+}
+
 export class FullPageChat extends ItemView {
     chat_id: string;
     plugin: CaretPlugin;
@@ -77,10 +132,135 @@ export class FullPageChat extends ItemView {
         root.render(chatComponent);
     }
     async submitMessage(userMessage: string) {
-        if (this.chatComponentRef) {
-            await this.chatComponentRef.submitMessage(userMessage);
+        // Adiciona a mensagem do usuário ao array de conversas
+        this.conversation.push({ content: userMessage, role: "user" });
+        // Atualiza o componente React
+        this.updateChatComponent();
+
+        // ======== INTERCEPTAÇÃO E MEMÓRIA DE CONTEXTO ========
+        // Memória simples: contexto das últimas 10 mensagens
+        const contexto = this.conversation.slice(-10).map(m => `${m.role === 'user' ? 'Usuário' : 'Bot'}: ${m.content}`).join('\n');
+
+        // Busca automática por comandos ou intenções
+        const msg = userMessage.toLowerCase();
+        let resposta = '';
+        if (
+            msg.includes('buscar nota') ||
+            msg.startsWith('busque') ||
+            msg.includes('procurar nota') ||
+            msg.includes('pode buscar notas')
+        ) {
+            // 1. Se o usuário usar "busque por: termo", busca exata
+            const termoExplicito = msg.match(/busque(?:r)? por:?\s*([^\n]+)/i);
+            let palavrasChave: string[] = [];
+            if (termoExplicito) {
+                palavrasChave = [termoExplicito[1].trim()];
+            } else {
+                // 2. Extrai palavras-chave da frase (remove stopwords)
+                const stopwords = ['sobre', 'notas', 'de', 'e', 'a', 'o', 'as', 'os', 'para', 'um', 'uma', 'por', 'em', 'do', 'da', 'dos', 'das', 'com', 'que', 'pode', 'buscar', 'procurar', 'nota', 'notas', 'pode', 'me', 'encontre', 'encontrar', 'mostre', 'mostrar', 'quero', 'preciso', 'favor', 'por', 'favor', 'porfavor', 'faça', 'fazer', 'procure', 'procurar'];
+                palavrasChave = msg
+                    .replace(/[?!.]/g, '')
+                    .split(/\s+/)
+                    .map(w => w.trim().toLowerCase())
+                    .filter(w => w && !stopwords.includes(w));
+            }
+
+            // Busca para cada palavra-chave
+            let resultados: any[] = [];
+            for (const palavra of palavrasChave) {
+                const notas = await this.plugin.buscarConteudo(palavra);
+                const conversas = await this.plugin.buscarEmConversas(palavra);
+                resultados = resultados.concat([...notas, ...conversas]);
+            }
+            // Remove duplicatas
+            resultados = resultados.filter(
+                (r, i, arr) => arr.findIndex(x => x.caminho === r.caminho && x.nome === r.nome) === i
+            );
+
+            // Salva no cache usando a combinação das palavras-chave
+            await this.plugin.salvarCacheBusca(palavrasChave.join('+'), resultados);
+
+            // Resposta
+            if (resultados.length > 0) {
+                let resposta = `Foram encontradas ${resultados.length} ocorrências relacionadas a "${palavrasChave.join(' + ')}":\n`;
+                resposta += resultados.map((r: any) => `- ${r.nome} (${r.caminho})`).join('\n');
+                this.conversation.push({ content: resposta, role: "assistant" });
+                this.updateChatComponent();
+            } else {
+                this.conversation.push({ content: `Nenhuma nota ou conversa encontrada para "${palavrasChave.join(' + ')}".`, role: "assistant" });
+                this.updateChatComponent();
+            }
+            return;
+        }
+        if (msg.includes('resumo') || msg.startsWith('resuma') || msg.startsWith('faça um resumo')) {
+            // Resumir todas as notas
+            const notas = this.plugin.listarNotas();
+            let conteudo = '';
+            for (const n of notas) {
+                const file = this.plugin.app.vault.getFiles().find(f => f.name === n.nome);
+                if (file) conteudo += await this.plugin.app.vault.read(file) + '\n';
+            }
+            // Resumo simples: pega as primeiras linhas de cada nota
+            const linhas = conteudo.split('\n').filter(l => l.trim()).slice(0, 10);
+            resposta = 'Resumo das notas:\n' + linhas.map(l => '- ' + l).join('\n');
+            this.conversation.push({ content: resposta, role: "assistant" });
+            this.updateChatComponent();
+            return;
+        }
+        if (msg.includes('acessibilidade') || msg.includes('detalhe') || msg.includes('análise')) {
+            // Busca contextual
+            const resultados = await this.plugin.buscarConteudo('acessibilidade');
+            if (resultados.length === 0) {
+                resposta = 'Nenhuma nota encontrada sobre acessibilidade.';
+            } else {
+                resposta = 'Notas sobre acessibilidade:\n';
+                resposta += resultados.map(r => `- ${r.nome}: ${r.trecho}`).join('\n');
+            }
+            this.conversation.push({ content: resposta, role: "assistant" });
+            this.updateChatComponent();
+            return;
+        }
+        // Resposta padrão: segue para o LLM, mas inclui contexto
+        try {
+            const respostaLLM = await this.getLLMResponse([
+                ...this.conversation,
+                { content: `Contexto recente:\n${contexto}\n\nSiga as instruções abaixo ao responder:\n${instrucoesBot}`, role: "user" }
+            ]);
+            this.conversation.push({ content: respostaLLM, role: "assistant" });
+            this.updateChatComponent();
+        } catch (error) {
+            new Notice("Erro ao obter resposta do modelo: " + error.message);
         }
     }
+
+    updateChatComponent() {
+        if (this.chatComponentRef) {
+            if (this.chatComponentRef.setConversation) {
+                this.chatComponentRef.setConversation(this.conversation);
+            }
+        }
+    }
+
+    // Adicione um método fictício getLLMResponse para simular a resposta do modelo
+    async getLLMResponse(conversation: Message[]) {
+        // Chama o LLM/backend real e retorna a resposta
+        const provider = this.plugin.settings.llm_provider;
+        const model = this.plugin.settings.model;
+        const temperature = this.plugin.settings.temperature;
+        if (!isEligibleProvider(provider)) {
+            throw new Error(`Invalid provider: ${provider}`);
+        }
+        let sdk_provider: sdk_provider = get_provider(this.plugin, provider);
+        const resposta = await ai_sdk_completion(
+            sdk_provider,
+            model,
+            toCoreMessages(conversation),
+            temperature,
+            provider
+        );
+        return resposta;
+    }
+
     handleInsertNote(callback: (note: string) => void) {
         new InsertNoteModal(this.app, this.plugin, (note: string) => {
             callback(note); // Call the callback with the note value
@@ -173,91 +353,59 @@ export class FullPageChat extends ItemView {
         });
     }
 
-    async saveChat() {
-        // Prep the contents itself to be saved
+    async saveChat(durationInSeconds?: number) {
+        const { settings } = this.plugin;
+        const savePath = settings.chatSavePath;
 
-        let file_content = `\`\`\`xml
-        <root>
-		<metadata>\n<id>${this.chat_id}</id>\n</metadata>
-		`;
-
-        let messages = ``;
-        if (this.conversation.length === 0) {
+        // ✅ 2.4. Evitar Criação Desnecessária
+        const folder = this.app.vault.getAbstractFileByPath(savePath);
+        if (!folder || !(folder instanceof TFolder)) {
+            new Notice(`❌ Diretório de chat inválido ou não encontrado: "${savePath}". Verifique nas configurações.`);
             return;
         }
-        for (let i = 0; i < this.conversation.length; i++) {
-            const message = this.conversation[i];
-            const escaped_content = this.escapeXml(message.content);
-            const message_xml = `
-                <message>
-                    <role>${message.role}</role>
-                    <content>${escaped_content}</content>
-                </message>
-            `.trim();
-            messages += message_xml;
-        }
-        let conversation = `<conversation>\n${messages}</conversation></root>\`\`\``;
-        file_content += conversation;
 
-        // And then get the actual save file
-        const chat_folder_path = this.plugin.settings.chat_logs_folder;
+        // ✅ 2.3. Salvar Conversas
+        const now = new Date();
+        const date = now.toISOString().split("T")[0];
+        const dateTimeLocale = now.toLocaleString();
 
-        const chat_folder = this.app.vault.getAbstractFileByPath(chat_folder_path);
-        if (!chat_folder) {
-            await this.app.vault.createFolder(chat_folder_path);
-        }
-        let file_to_save_to = await this.plugin.getChatLog(chat_folder_path, this.chat_id);
+        let baseFileName = `chat-session-${date}`;
+        let fileName = `${baseFileName}.md`;
+        let filePath = `${savePath}/${fileName}`;
+        let counter = 1;
 
-        let new_chat = true;
-        if (file_to_save_to && file_to_save_to.path) {
-            new_chat = false;
+        // Check if the file already exists and iterate until we find a new name
+        while (this.app.vault.getAbstractFileByPath(filePath)) {
+            fileName = `${baseFileName}-${counter}.md`;
+            filePath = `${savePath}/${fileName}`;
+            counter++;
         }
 
-        const date = new Date();
-        const year = date.getFullYear();
-        const month = ("0" + (date.getMonth() + 1)).slice(-2);
-        const day = ("0" + date.getDate()).slice(-2);
-        const date_path = `/${year}/${month}/${day}`;
+        // Estrutura do arquivo
+        let markdownContent = `## 🧠 Conversa – ${dateTimeLocale}\n\n`;
 
-        if (this.plugin.settings.chat_logs_date_format_bool) {
-            const fullPath = chat_folder_path + date_path;
-            const pathSegments = fullPath.split("/");
-            let currentPath = "";
-            for (const segment of pathSegments) {
-                if (segment !== "") {
-                    currentPath += segment;
-                    const folderExists = this.app.vault.getAbstractFileByPath(currentPath);
-                    if (!folderExists) {
-                        await this.app.vault.createFolder(currentPath);
-                    }
-                    currentPath += "/";
-                }
-            }
-        }
+        this.conversation.forEach((msg) => {
+            const role = msg.role === "user" ? "Usuário" : "Bot";
+            markdownContent += `**${role}:** ${msg.content}\n`;
+        });
 
-        if (new_chat) {
-            const file_name = `${this.chat_id}.md`;
-            let file_path = chat_folder_path + "/" + file_name;
-            if (this.plugin.settings.chat_logs_date_format_bool) {
-                file_path = chat_folder_path + date_path + "/" + file_name;
-            }
-            const new_file_created = await this.app.vault.create(file_path, file_content);
-            if (this.plugin.settings.chat_logs_rename_bool) {
-                await this.name_new_chat(new_file_created);
-            }
-        } else {
-            if (!file_to_save_to?.path) {
-                new Notice("Failed to find file to save to");
-                return;
-            }
-            const file = await this.app.vault.getFileByPath(file_to_save_to.path);
-            if (!file) {
-                new Notice("Failed to save file");
-                throw new Error("Failed to save file");
-            }
-            await this.app.vault.modify(file, file_content);
+        markdownContent += `\n---\n\n`;
+        const safeDuration = durationInSeconds ?? 0;
+        const durationMinutes = Math.floor(safeDuration / 60);
+        const durationSeconds = safeDuration % 60;
+
+        markdownContent += `Total de mensagens: ${this.conversation.length}\n`;
+        markdownContent += `Duração: ${durationMinutes}m${durationSeconds}s\n`;
+
+        try {
+            await this.app.vault.create(filePath, markdownContent);
+            new Notice(`✅ Conversa salva em: ${filePath}`);
+        } catch (error) {
+            console.error("Erro ao salvar o chat:", error);
+            new Notice("❌ Falha ao salvar o arquivo de chat.");
         }
     }
+
     async name_new_chat(new_file: any) {
         let new_message = `
 Please create a title for this conversation. Keep it to 3-5 words at max. Be as descriptive with that as you can be.\n\n
@@ -280,7 +428,7 @@ Respond in plain text with no formatting.
         }
 
         let sdk_provider: sdk_provider = get_provider(this.plugin, provider);
-        const content = await ai_sdk_completion(sdk_provider, model, conversation, temperature, provider);
+        const content = await ai_sdk_completion(sdk_provider, model, toCoreMessages(conversation), temperature, provider);
 
         const path = new_file.path;
         const newPath = `${path.substring(0, path.lastIndexOf("/"))}/${content}.md`;

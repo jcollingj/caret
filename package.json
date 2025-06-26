@@ -24,7 +24,10 @@
         "obsidian": "latest",
         "raw-loader": "^4.0.2",
         "tslib": "2.4.0",
-        "typescript": "^5.5.2"
+        "typescript": "^5.5.2",
+        "@codemirror/language": "^6.10.1",
+        "@codemirror/state": "^6.4.1",
+        "@codemirror/view": "^6.26.3"
     },
     "dependencies": {
         "@ai-sdk/anthropic": "^1.1.6",
@@ -35,7 +38,6 @@
         "@ai-sdk/xai": "^1.2.16",
         "@anthropic-ai/sdk": "^0.36.3",
         "@bundled-es-modules/pdfjs-dist": "^3.6.172-alpha.1",
-        "@codemirror/language": "^6.10.1",
         "@emotion/react": "^11.11.4",
         "@emotion/styled": "^11.11.5",
         "@instructor-ai/instructor": "^1.7.0",

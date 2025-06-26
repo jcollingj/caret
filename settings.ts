@@ -329,91 +329,45 @@ export class CaretSettingTab extends PluginSettingTab {
             );
     }
     chat_settings_tab(containerEl: HTMLElement): void {
-        let tempChatFolderPath = this.plugin.settings.chat_logs_folder; // Temporary storage for input value
+        containerEl.createEl("h2", { text: "Chat Settings" });
 
-        const debouncedSave = debounce(
-            async (value: string) => {
-                if (value.length <= 1) {
-                    new Notice("The folder path must be longer than one character.");
-                    return;
-                }
-                if (value.endsWith("/")) {
-                    new Notice("The folder path must not end with a trailing slash.");
-                    return;
-                }
-                if (value !== this.plugin.settings.chat_logs_folder) {
-                    this.plugin.settings.chat_logs_folder = value;
-                    await this.plugin.saveSettings();
-                    await this.plugin.loadSettings();
-                }
-            },
-            1000,
-            true
-        ); // 500ms delay
+        this.containerEl.createEl("h4", { text: "💬 Chatbot" });
+        new Setting(containerEl)
+            .setName("📝 Diretório de Salvamento das Conversas")
+            .setDesc("Escolha onde salvar os históricos das conversas com o chatbot.")
+            .addText((text) =>
+                text
+                    .setPlaceholder("ChatGPT_MD/chats")
+                    .setValue(this.plugin.settings.chatSavePath || "")
+                    .onChange(async (value) => {
+                        this.plugin.settings.chatSavePath = value.trim();
+                        await this.plugin.saveSettings();
+                    })
+            );
 
         new Setting(containerEl)
-            .setName("Chat folder path")
-            .setDesc("Specify the folder path where chat logs will be stored.")
-            .addText((text) => {
-                text.setPlaceholder("Enter folder path")
-                    .setValue(this.plugin.settings.chat_logs_folder)
-                    .onChange((value: string) => {
-                        tempChatFolderPath = value;
-                        debouncedSave(value);
-                    });
-            });
-
-        new Setting(containerEl)
-            .setName("Use date format for subfolders")
-            .setDesc("Use Year-Month-Date as subfolders for the chat logs.")
-            .addToggle((toggle) => {
-                toggle.setValue(this.plugin.settings.chat_logs_date_format_bool).onChange(async (value: boolean) => {
-                    this.plugin.settings.chat_logs_date_format_bool = value;
-                    await this.plugin.saveSettings();
-                    await this.plugin.loadSettings();
-                });
-            });
-
-        new Setting(containerEl)
-            .setName("Rename chats")
-            .setDesc("Chats will be given a descriptive name using your default set provider/model")
-            .addToggle((toggle) => {
-                toggle.setValue(this.plugin.settings.chat_logs_rename_bool).onChange(async (value: boolean) => {
-                    this.plugin.settings.chat_logs_rename_bool = value;
-                    await this.plugin.saveSettings();
-                    await this.plugin.loadSettings();
-                });
-            });
-
-        // LLM Provider Settings
-        const send_chat_shortcut_options: { [key: string]: string } = {
-            enter: "Enter",
-            shift_enter: "Shift + Enter",
-            // cmd_enter: "CMD + Enter",
-        };
-        new Setting(containerEl)
-            .setName("Send chat keybinds")
-            .setDesc("Select which shortcut will be used to send messages.")
+            .setName("Chat Send Shortcut")
+            .setDesc("The shortcut to send a chat message.")
             .addDropdown((dropdown) => {
                 dropdown
-                    .addOptions(send_chat_shortcut_options)
+                    .addOption("enter", "Enter")
+                    .addOption("shift_enter", "Shift+Enter")
                     .setValue(this.plugin.settings.chat_send_chat_shortcut)
-                    .onChange(async (selected) => {
-                        this.plugin.settings.chat_send_chat_shortcut = selected;
-
+                    .onChange(async (value) => {
+                        this.plugin.settings.chat_send_chat_shortcut = value;
                         await this.plugin.saveSettings();
-                        await this.plugin.loadSettings();
                     });
             });
 
         new Setting(containerEl)
-            .setName("Use nested [[]] content")
-            .setDesc("When set to true, context will include 1 layer of block refs")
+            .setName("Rename Chat Log on First Message")
+            .setDesc(
+                "When a new chat log is created, the file name will be based on the first message. Otherwise, it will be based on the current date."
+            )
             .addToggle((toggle) => {
-                toggle.setValue(this.plugin.settings.include_nested_block_refs).onChange(async (value: boolean) => {
-                    this.plugin.settings.include_nested_block_refs = value;
+                toggle.setValue(this.plugin.settings.chat_logs_rename_bool).onChange(async (value) => {
+                    this.plugin.settings.chat_logs_rename_bool = value;
                     await this.plugin.saveSettings();
-                    await this.plugin.loadSettings();
                 });
             });
     }

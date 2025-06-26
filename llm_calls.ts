@@ -1,6 +1,15 @@
 import { createGoogleGenerativeAI, google, GoogleGenerativeAIProvider } from "@ai-sdk/google";
 import { Notice } from "obsidian";
-import { streamText, StreamTextResult, CoreTool, generateText, generateObject } from "ai";
+import {
+    streamText,
+    StreamTextResult,
+    CoreTool,
+    generateText,
+    generateObject,
+    CoreMessage,
+    ToolCall,
+    ToolResult,
+} from "ai";
 import { OpenAIProvider } from "@ai-sdk/openai";
 import { AnthropicProvider } from "@ai-sdk/anthropic";
 import { GroqProvider, createGroq } from "@ai-sdk/groq";
@@ -79,41 +88,29 @@ export function get_provider(plugin: CaretPlugin, provider: eligible_provider): 
 export async function ai_sdk_streaming(
     provider: sdk_provider,
     model: string,
-    conversation: Array<{ role: string; content: string }>,
+    conversation: CoreMessage[],
     temperature: number,
-    provider_name: eligible_provider
+    provider_name: eligible_provider,
+    tools?: Record<string, CoreTool<any, any>>
 ): Promise<StreamTextResult<Record<string, CoreTool<any, any>>, never>> {
     new Notice(`Calling ${provider_name[0].toUpperCase() + provider_name.slice(1)}`);
-    const formattedPrompt = conversation.map((msg) => `${msg.role}: ${msg.content}`).join("\n");
-    const handleError = (event: unknown) => {
-        const error = (event as { error: unknown }).error;
-        const typedError = error as { errors: Array<{ statusCode: number }> };
-        const errors = typedError.errors;
-
-        if (errors?.some((e) => e.statusCode === 429)) {
-            console.error("Rate limit exceeded error");
-            new Notice(`Rate limit exceeded for ${provider_name} API`);
-        } else {
-            new Notice(`Unknown error during ${provider_name} streaming`);
-        }
-    };
 
     if (provider_name === "openrouter") {
         const openrouter_provider = provider as OpenRouterProvider;
         return await streamText({
             model: openrouter_provider.chat(model),
-            prompt: formattedPrompt,
+            messages: conversation,
             temperature,
-            onError: handleError,
+            tools: tools,
         });
     }
 
     const final_provider = provider as Exclude<sdk_provider, OpenRouterProvider>;
     const stream = await streamText({
         model: final_provider(model),
-        prompt: formattedPrompt,
+        messages: conversation,
         temperature,
-        onError: handleError,
+        tools: tools,
     });
 
     return stream;
@@ -121,76 +118,91 @@ export async function ai_sdk_streaming(
 export async function ai_sdk_completion(
     provider: sdk_provider,
     model: string,
-    conversation: Array<{ role: string; content: string }>,
+    conversation: CoreMessage[],
     temperature: number,
     provider_name: eligible_provider
 ): Promise<string> {
     new Notice(`Calling ${provider_name[0].toUpperCase() + provider_name.slice(1)}`);
-    const formattedPrompt = conversation.map((msg) => `${msg.role}: ${msg.content}`).join("\n");
 
-    if (provider_name === "openrouter") {
-        const openrouter_provider = provider as OpenRouterProvider;
+    try {
+        if (provider_name === "openrouter") {
+            const openrouter_provider = provider as OpenRouterProvider;
+            const response = await generateText({
+                model: openrouter_provider.chat(model),
+                messages: conversation,
+                temperature,
+            });
+            return response.text;
+        }
+
+        const final_provider = provider as Exclude<sdk_provider, OpenRouterProvider>;
         const response = await generateText({
-            model: openrouter_provider.chat(model),
-            prompt: formattedPrompt,
+            model: final_provider(model),
+            messages: conversation,
             temperature,
         });
+
         return response.text;
+    } catch (error) {
+        new Notice(`An unexpected error occurred: ${error}`);
+        console.error(error);
+        throw error;
     }
-
-    const final_provider = provider as Exclude<sdk_provider, OpenRouterProvider>;
-    const response = await generateText({
-        model: final_provider(model),
-        prompt: formattedPrompt,
-        temperature,
-    });
-
-    return response.text;
 }
 export async function ai_sdk_structured<T extends z.ZodType>(
     provider: sdk_provider,
     model: string,
-    conversation: Array<{ role: string; content: string }>,
+    conversation: CoreMessage[],
     temperature: number,
     provider_name: eligible_provider,
     schema: T
 ): Promise<z.infer<T>> {
     new Notice(`Calling ${provider_name[0].toUpperCase() + provider_name.slice(1)}`);
-    const formattedPrompt = conversation.map((msg) => `${msg.role}: ${msg.content}`).join("\n");
 
-    if (provider_name === "openrouter") {
-        const openrouter_provider = provider as OpenRouterProvider;
+    try {
+        if (provider_name === "openrouter") {
+            const openrouter_provider = provider as OpenRouterProvider;
+            const response = await generateObject({
+                model: openrouter_provider.chat(model),
+                schema,
+                messages: conversation,
+                temperature,
+                mode: "json",
+            });
+
+            return response;
+        }
+
+        const final_provider = provider as Exclude<sdk_provider, OpenRouterProvider>;
         const response = await generateObject({
-            model: openrouter_provider.chat(model),
+            model: final_provider(model),
             schema,
-            prompt: formattedPrompt,
+            messages: conversation,
             temperature,
-            mode: "json",
         });
 
-        return response;
+        return response.object;
+    } catch (error) {
+        new Notice(`An unexpected error occurred: ${error}`);
+        console.error(error);
+        throw error;
     }
-
-    const final_provider = provider as Exclude<sdk_provider, OpenRouterProvider>;
-    const response = await generateObject({
-        model: final_provider(model),
-        schema,
-        prompt: formattedPrompt,
-        temperature,
-    });
-
-    return response.object;
 }
 
 export async function ai_sdk_image_gen(params: { provider: image_provider; prompt: string; model: string }) {
-    // Implementation to be added
     const model = params.model;
     console.log("Generating image...");
     console.log({ model });
-    const { image } = await generateImage({
-        model: params.provider.image(model),
-        prompt: params.prompt,
-    });
-    const arrayBuffer = image.uint8Array;
-    return arrayBuffer;
+    try {
+        const { image } = await generateImage({
+            model: params.provider.image(model),
+            prompt: params.prompt,
+        });
+        const arrayBuffer = image.uint8Array;
+        return arrayBuffer;
+    } catch (error) {
+        new Notice(`An unexpected error occurred during image generation: ${error}`);
+        console.error(error);
+        throw error;
+    }
 }

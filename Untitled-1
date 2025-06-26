@@ -1,0 +1,35 @@
+# Instruções para o Plugin/Assistente acessar e buscar notas do Obsidian
+
+1. **Acesso às Notas:**
+   - O plugin deve ter acesso de leitura a todas as notas na pasta do Obsidian.
+   - As notas são arquivos `.md` (Markdown) e podem estar em subpastas.
+
+2. **Listar todas as notas disponíveis:**
+   - Percorra toda a estrutura de pastas e subpastas.
+   - Liste todos os arquivos `.md` encontrados, mostrando o nome e o caminho relativo/completo.
+
+3. **Buscar por conteúdo específico nas notas:**
+   - Permita buscas por palavra-chave ou frase em todo o conteúdo das notas.
+   - A busca deve ser case-insensitive (não diferenciar maiúsculas/minúsculas).
+   - Para cada nota encontrada, mostre o nome, caminho e um trecho do conteúdo onde a palavra foi encontrada.
+
+4. **Responder perguntas com base no conteúdo das notas:**
+   - Utilize o conteúdo das notas para responder perguntas do usuário.
+   - Se necessário, busque, leia e extraia informações relevantes das notas para compor a resposta.
+
+5. **Não modificar a nota original:**
+   - Caso seja necessário fazer qualquer modificação em uma nota, **NÃO** altere o arquivo original.
+   - Crie uma nova nota baseada na original, com as alterações necessárias, e indique claramente que se trata de uma versão modificada.
+   - O nome da nova nota deve indicar que é uma cópia ou versão derivada (ex: `NotaOriginal_MODIFICADA.md`).
+
+6. **Privacidade e Segurança:**
+   - Não compartilhe o conteúdo das notas com terceiros.
+   - Respeite a confidencialidade das informações encontradas.
+
+---
+
+**Exemplos de comandos do usuário:**
+- "Liste todas as notas disponíveis."
+- "Busque por 'projeto' nas notas."
+- "Responda: Quais são as ideias para 2024?"
+- "Adapte a nota 'Planejamento.md' sem modificar a original." 

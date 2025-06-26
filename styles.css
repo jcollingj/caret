@@ -375,3 +375,253 @@
     appearance: number-input;
     -webkit-appearance: number-input;
 }
+
+/* Caret Plugin - Estilo Moderno para Chat */
+
+.caret-chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: linear-gradient(135deg, #232526 0%, #414345 100%);
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+  padding: 0;
+  overflow: hidden;
+}
+
+.caret-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 16px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: transparent;
+}
+
+.caret-message-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 0;
+}
+
+.caret-message-content {
+  background: #2c2f34;
+  color: #f3f3f3;
+  border-radius: 12px;
+  padding: 14px 18px;
+  max-width: 70vw;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  font-size: 1.05em;
+  word-break: break-word;
+  position: relative;
+}
+
+.caret-user .caret-message-content {
+  background: #3a7bd5;
+  color: #fff;
+  align-self: flex-end;
+}
+
+.caret-assistant .caret-message-content {
+  background: #232526;
+  color: #e0e0e0;
+  align-self: flex-start;
+}
+
+.caret-chat-input-container {
+  background: #232526;
+  padding: 18px 16px 12px 16px;
+  border-top: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.caret-chat-textarea {
+  width: 100%;
+  min-height: 120px;
+  max-height: 300px;
+  resize: vertical;
+  border-radius: 10px;
+  border: 1px solid #444;
+  background: #2c2f34;
+  color: #f3f3f3;
+  padding: 12px;
+  font-size: 1em;
+  outline: none;
+  transition: border 0.2s;
+}
+.caret-chat-textarea:focus {
+  border: 1.5px solid #3a7bd5;
+  background: #232526;
+}
+
+.caret-chat-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.caret-chat-button {
+  background: linear-gradient(90deg, #3a7bd5 0%, #00d2ff 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 1em;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(58,123,213,0.08);
+  transition: background 0.2s, transform 0.1s;
+}
+.caret-chat-button:hover {
+  background: linear-gradient(90deg, #00d2ff 0%, #3a7bd5 100%);
+  transform: translateY(-2px) scale(1.04);
+}
+
+.caret-chat-stats {
+  display: flex;
+  justify-content: flex-end;
+  gap: 18px;
+  color: #aaa;
+  font-size: 0.95em;
+  margin-top: 2px;
+}
+
+.caret-markdown-body {
+  font-size: 1.05em;
+  line-height: 1.6;
+  color: inherit;
+}
+.caret-markdown-body code {
+  background: #232526;
+  color: #ffb86c;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 0.98em;
+}
+.caret-markdown-body pre {
+  background: #181a1b;
+  border-radius: 10px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.caret-chat-copy-icon {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: #3a7bd5;
+  background: #fff2;
+  border-radius: 50%;
+  padding: 2px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.caret-chat-copy-icon:hover {
+  background: #3a7bd5;
+  color: #fff;
+}
+
+.caret-chat-action-button {
+  background: none;
+  border: none;
+  color: #00d2ff;
+  cursor: pointer;
+  margin-left: 8px;
+  font-size: 1.1em;
+  transition: color 0.2s;
+}
+.caret-chat-action-button:hover {
+  color: #3a7bd5;
+}
+
+.message-checkbox {
+  margin-top: 8px;
+  accent-color: #3a7bd5;
+  width: 18px;
+  height: 18px;
+}
+
+@media (max-width: 700px) {
+  .caret-chat-container {
+    border-radius: 0;
+    padding: 0;
+  }
+  .caret-message-content {
+    max-width: 95vw;
+    font-size: 0.98em;
+  }
+  .caret-chat-input-container {
+    padding: 10px 6px 8px 6px;
+  }
+}
+
+/* Animações e transições modernas */
+.caret-chat-button, .caret-chat-action-button, .caret-chat-copy-icon, .caret-submenu-item, .caret-clickable-icon {
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s, transform 0.15s cubic-bezier(0.4,0.2,0.2,1);
+}
+
+.caret-chat-button:active {
+  transform: scale(0.97);
+  box-shadow: 0 1px 4px rgba(58,123,213,0.12);
+}
+
+.caret-chat-action-button:active {
+  transform: scale(1.12) rotate(-8deg);
+  color: #00d2ff;
+}
+
+.caret-chat-copy-icon:active {
+  transform: scale(1.18) rotate(8deg);
+  background: #00d2ff;
+  color: #fff;
+}
+
+.caret-chat-copy-icon {
+  transition: background 0.2s, color 0.2s, transform 0.18s cubic-bezier(0.4,0.2,0.2,1);
+}
+
+.caret-submenu-item {
+  transition: background 0.18s, color 0.18s, transform 0.18s cubic-bezier(0.4,0.2,0.2,1);
+}
+.caret-submenu-item:hover {
+  background: #3a7bd5;
+  color: #fff;
+  transform: scale(1.08) rotate(-3deg);
+}
+
+.caret-clickable-icon {
+  transition: color 0.18s, transform 0.18s cubic-bezier(0.4,0.2,0.2,1);
+}
+.caret-clickable-icon:hover {
+  color: #00d2ff;
+  transform: scale(1.12) rotate(6deg);
+}
+
+/* Mensagens aparecem com fade-in */
+.caret-message-wrapper {
+  animation: caret-fadein 0.5s cubic-bezier(0.4,0.2,0.2,1);
+}
+@keyframes caret-fadein {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Efeito de foco no textarea */
+.caret-chat-textarea:focus {
+  box-shadow: 0 0 0 2px #3a7bd5aa;
+  transition: box-shadow 0.2s;
+}
+
+/* Efeito de pulso em botões importantes */
+.caret-chat-button:focus-visible {
+  animation: caret-pulse 0.7s cubic-bezier(0.4,0.2,0.2,1) 1;
+}
+@keyframes caret-pulse {
+  0% { box-shadow: 0 0 0 0 #00d2ff44; }
+  70% { box-shadow: 0 0 0 8px #00d2ff11; }
+  100% { box-shadow: 0 0 0 0 #00d2ff00; }
+}

@@ -60,20 +60,29 @@ export class CMDJModal extends Modal {
 
     async submit_edit(result: string) {
         let content = `
-Please apply the following instructions to the below content:
+// Please apply the following instructions to the below content:
+Por favor, aplique as instruções abaixo ao conteúdo a seguir:
 
-Instructions:
+// Instructions:
+Instruções:
 ${this.result}
 
-Content:
+// Content:
+Conteúdo:
 ${this.selectedText}
 
-## Rules:
-- Just return the reponse that follows the instructions. No need to include a preample or anything
+// ## Rules:
+## Regras:
+// - Just return the reponse that follows the instructions. No need to include a preample or anything
+- Apenas retorne a resposta que segue as instruções. Não é necessário incluir um preâmbulo ou qualquer outra coisa
 
-## Markdown Formatting: 
-Always apply markdown formatting. For keywords use the following:
-	todos - Prepend todo lines with:
+// ## Markdown Formatting: 
+## Formatação Markdown:
+// Always apply markdown formatting. For keywords use the following:
+Sempre aplique a formatação markdown. Para palavras-chave, use o seguinte:
+// 	todos - Prepend todo lines with:
+// 	- [ ] 
+	todos - Adicione no início das linhas de tarefas:
 	- [ ] 
 `.trim();
         const conversation = [{ role: "user", content: content }];

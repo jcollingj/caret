@@ -7,3 +7,4 @@ generate_uuids.ts
 *.code-workspace
 main.js
 .aider*
+venv/*

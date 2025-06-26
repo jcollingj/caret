@@ -45,7 +45,7 @@ import { CaretCanvas } from "./caret_canvas";
 const parseString = require("xml2js").parseString;
 import { createGoogleGenerativeAI, GoogleGenerativeAIProvider } from "@ai-sdk/google";
 import { createOpenAI, OpenAIProvider } from "@ai-sdk/openai";
-import { StreamTextResult, CoreTool } from "ai";
+import { StreamTextResult, CoreTool, CoreMessage } from "ai";
 import { AnthropicProvider, createAnthropic } from "@ai-sdk/anthropic";
 import { GroqProvider, createGroq } from "@ai-sdk/groq";
 import { createOllama, OllamaProvider } from "ollama-ai-provider";
@@ -55,7 +55,7 @@ import { createXai, xai, XaiProvider } from "@ai-sdk/xai";
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
     caret_version: "0.2.73",
-    chat_logs_folder: "caret/chats",
+    chatSavePath: "ChatGPT_MD/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
     chat_send_chat_shortcut: "enter",
@@ -131,58 +131,48 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
             },
         },
         groq: {
-            "llama3-8b-8192": {
-                name: "Llama 8B",
+            "llama-3.1-70b-versatile": {
+                name: "Llama 3.1 70B",
+                context_window: 131072,
+                function_calling: true,
+                vision: false,
+                streaming: true,
+            },
+            "llama-3.1-8b-instant": {
+                name: "Llama 3.1 8B",
+                context_window: 131072,
+                function_calling: true,
+                vision: false,
+                streaming: true,
+            },
+            "gemma2-9b-it": {
+                name: "Gemma2 9B",
                 context_window: 8192,
-                function_calling: false,
+                function_calling: true,
                 vision: false,
                 streaming: true,
             },
             "llama3-70b-8192": {
-                name: "Llama 70B",
+                name: "Llama3 70B",
                 context_window: 8192,
-                function_calling: false,
+                function_calling: true,
+                vision: false,
+                streaming: true,
+            },
+            "llama3-8b-8192": {
+                name: "Llama3 8B",
+                context_window: 8192,
+                function_calling: true,
                 vision: false,
                 streaming: true,
             },
             "mixtral-8x7b-32768": {
-                name: "Mixtral 8x7b",
+                name: "Mixtral 8x7B",
                 context_window: 32768,
-                function_calling: false,
+                function_calling: true,
                 vision: false,
                 streaming: true,
             },
-            "gemma-7b-it": {
-                name: "Gemma 7B",
-                context_window: 8192,
-                function_calling: false,
-                vision: false,
-                streaming: true,
-            },
-            // In preview, not accessiable yet
-            "llama-3.1-8b-instant": {
-                name: "llama 3.1 8B Instant (Preview)",
-                context_window: 8000,
-                function_calling: true,
-                vision: true,
-                streaming: true,
-            },
-            "llama-3.1-70b-versatile": {
-                name: "llama 3.1 70B Versatile (Preview)",
-                context_window: 8000,
-                function_calling: true,
-                vision: true,
-                streaming: true,
-            },
-
-            // Failed on first attempt. Need to add retry logic first.
-            // "llama3-groq-70b-8192-tool-use-preview": {
-            //     name: "llama3 Groq 70b Tool Use Preview",
-            //     context_window: 8192,
-            //     function_calling: true,
-            //     vision: true,
-            //     streaming: true,
-            // },
         },
         anthropic: {
             "claude-3-5-sonnet-20240620": {
@@ -932,7 +922,7 @@ version: 1
                                     const stream = await ai_sdk_streaming(
                                         sdk_provider,
                                         model,
-                                        conversation,
+                                        toCoreMessages(conversation),
                                         temperature,
                                         provider
                                     );
@@ -942,7 +932,7 @@ version: 1
                                     const content = await ai_sdk_completion(
                                         sdk_provider,
                                         model,
-                                        conversation,
+                                        toCoreMessages(conversation),
                                         temperature,
                                         provider
                                     );
@@ -1121,6 +1111,72 @@ version: 1
         // Currently not using the sidebar chat.
         // this.registerView(VIEW_NAME_SIDEBAR_CHAT, (leaf) => new SidebarChat(leaf));
         this.registerView(VIEW_CHAT, (leaf) => new FullPageChat(this, leaf));
+
+        // Comando: Listar todas as notas
+        this.addCommand({
+            id: 'listar-notas-obsidian',
+            name: 'Listar todas as notas do Obsidian',
+            callback: () => {
+                const notas = this.listarNotas();
+                let msg = 'Notas disponíveis:\n';
+                for (const n of notas) {
+                    msg += `- ${n.nome} (${n.caminho})\n`;
+                }
+                new Notice(msg);
+            },
+        });
+
+        // Comando: Buscar por conteúdo
+        this.addCommand({
+            id: 'buscar-conteudo-obsidian',
+            name: 'Buscar por conteúdo nas notas do Obsidian',
+            callback: async () => {
+                const termo = window.prompt('Digite o termo a buscar nas notas:');
+                if (!termo) return;
+                const resultados = await this.buscarConteudo(termo);
+                if (resultados.length === 0) {
+                    new Notice('Nenhuma nota encontrada com esse termo.');
+                } else {
+                    let msg = `Notas com "${termo}" (total: ${resultados.length}):\n`;
+                    for (const r of resultados) {
+                        msg += `- ${r.nome} (${r.caminho}): ${r.trecho}\n`;
+                    }
+                    new Notice(msg);
+                }
+            },
+        });
+
+        // Comando: Responder pergunta com base nas notas
+        this.addCommand({
+            id: 'responder-pergunta-obsidian',
+            name: 'Responder pergunta com base nas notas do Obsidian',
+            callback: async () => {
+                const pergunta = window.prompt('Digite a pergunta:');
+                if (!pergunta) return;
+                const resposta = await this.responderPergunta(pergunta);
+                new Notice(resposta);
+            },
+        });
+
+        // Comando: Criar nova nota baseada em outra
+        this.addCommand({
+            id: 'criar-nota-baseada',
+            name: 'Criar nova nota baseada em outra (sem modificar a original)',
+            callback: async () => {
+                const nomeOriginal = window.prompt('Digite o nome da nota original (exato):');
+                if (!nomeOriginal) return;
+                const arquivos = this.app.vault.getFiles().filter(f => f.extension === 'md' && f.name === nomeOriginal);
+                if (arquivos.length === 0) {
+                    new Notice('Nota original não encontrada.');
+                    return;
+                }
+                const conteudoOriginal = await this.app.vault.read(arquivos[0]);
+                const novoConteudo = window.prompt('Digite o novo conteúdo para a nota modificada:');
+                if (!novoConteudo) return;
+                const novoCaminho = await this.criarNotaBaseada(arquivos[0], novoConteudo);
+                new Notice(`Nova nota criada: ${novoCaminho}`);
+            },
+        });
     }
 
     // General functions that the plugin uses
@@ -2334,11 +2390,8 @@ version: 1
                             await canvas.requestSave(true);
                             const content = node.text || node.unknownData.text;
 
-                            const llm_prompt = {
-                                role: "user",
-                                content: `Condense the following text while preserving the original meaning. Return the condensed text by itself.
-                        Text: ${content}`,
-                            };
+                            const llm_prompt: CoreMessage = { role: "user", content: `Condense the following text while preserving the original meaning. Return the condensed text by itself.
+                        Text: ${content}` };
                             const provider = this.settings.llm_provider;
 
                             if (!isEligibleProvider(provider)) {
@@ -2438,12 +2491,9 @@ version: 1
                                 chunks: z.array(z.string().describe("A logical section of the original text")),
                             });
 
-                            const llm_prompt = {
-                                role: "user",
-                                content: `Split the following text into logical sections, preserving the complete meaning of each section:
+                            const llm_prompt: CoreMessage = { role: "user", content: `Split the following text into logical sections, preserving the complete meaning of each section:
 
-                                ${content}`,
-                            };
+                                ${content}` };
 
                             try {
                                 const provider = this.settings.llm_provider;
@@ -2503,12 +2553,9 @@ version: 1
                                 chunks: z.array(z.string().describe("A logical section of the original text")),
                             });
 
-                            const llm_prompt = {
-                                role: "user",
-                                content: `Split the following text into logical sections, preserving the complete meaning of each section:
+                            const llm_prompt: CoreMessage = { role: "user", content: `Split the following text into logical sections, preserving the complete meaning of each section:
 
-                                ${content}`,
-                            };
+                                ${content}` };
 
                             try {
                                 const provider = this.settings.llm_provider;
@@ -3118,11 +3165,11 @@ version: 1
             let sdk_provider: sdk_provider = get_provider(this, provider);
 
             if (this.settings.llm_provider_options[provider][model].streaming) {
-                const stream = await ai_sdk_streaming(sdk_provider, model, conversation, temperature, provider);
+                const stream = await ai_sdk_streaming(sdk_provider, model, toCoreMessages(conversation), temperature, provider);
                 new_canvas_node.text = "";
                 await this.update_node_content_streaming(new_node_id, stream);
             } else {
-                const content = await ai_sdk_completion(sdk_provider, model, conversation, temperature, provider);
+                const content = await ai_sdk_completion(sdk_provider, model, toCoreMessages(conversation), temperature, provider);
                 new_canvas_node.setText(content);
             }
             if (i === 0) {
@@ -3284,14 +3331,14 @@ version: 1
         let sdk_provider: sdk_provider = get_provider(this, provider);
 
         if (this.settings.llm_provider_options[provider][model].streaming) {
-            const stream = await ai_sdk_streaming(sdk_provider, model, conversation, temperature, provider);
+            const stream = await ai_sdk_streaming(sdk_provider, model, toCoreMessages(conversation), temperature, provider);
             // example: use textStream as an async iterable
 
             this.update_node_content(refreshed_node_id, "");
             await this.update_node_content_streaming(refreshed_node_id, stream);
         } else {
             this.update_node_content(refreshed_node_id, "Refreshing...");
-            const content = await ai_sdk_completion(sdk_provider, model, conversation, temperature, provider);
+            const content = await ai_sdk_completion(sdk_provider, model, toCoreMessages(conversation), temperature, provider);
 
             refreshed_node.node.text = content;
             this.update_node_content(refreshed_node_id, content);
@@ -3518,7 +3565,7 @@ version: 1
     }
 
     addChatIconToRibbon() {
-        this.addRibbonIcon("message-square", "Caret Chat", async (evt) => {
+        this.addRibbonIcon("message-circle", "Abrir Chatbot", async (evt) => {
             await this.app.workspace.getLeaf(true).setViewState({
                 type: VIEW_CHAT,
                 active: true,
@@ -3554,4 +3601,140 @@ version: 1
                 return null;
         }
     }
+
+    // ====== FUNÇÕES DE NOTAS OBSIDIAN ======
+    /**
+     * Lista todas as notas .md disponíveis no vault
+     */
+    listarNotas() {
+        return this.app.vault.getFiles()
+            .filter(f => f.extension === 'md')
+            .map(f => ({ nome: f.name, caminho: f.path }));
+    }
+
+    /**
+     * Busca por conteúdo específico em todas as notas .md
+     * @param termo Palavra/frase a buscar
+     */
+    async buscarConteudo(termo: string) {
+        const arquivos = this.app.vault.getFiles().filter(f => f.extension === 'md');
+        const resultados = [];
+        for (const arquivo of arquivos) {
+            const conteudo = await this.app.vault.read(arquivo);
+            if (conteudo.toLowerCase().includes(termo.toLowerCase())) {
+                const trecho = conteudo.split('\n').find(linha => linha.toLowerCase().includes(termo.toLowerCase()));
+                resultados.push({ nome: arquivo.name, caminho: arquivo.path, trecho });
+            }
+        }
+        return resultados;
+    }
+
+    /**
+     * Responde perguntas com base no conteúdo das notas (busca trechos relevantes)
+     * @param pergunta Pergunta do usuário
+     */
+    async responderPergunta(pergunta: string) {
+        // Busca por palavras-chave da pergunta nas notas
+        const resultados = await this.buscarConteudo(pergunta);
+        if (resultados.length === 0) return 'Nenhuma informação encontrada nas notas.';
+        let resposta = 'Informações encontradas nas notas:\n';
+        for (const r of resultados) {
+            resposta += `- ${r.nome} (${r.caminho}): ${r.trecho}\n`;
+        }
+        return resposta;
+    }
+
+    /**
+     * Cria uma nova nota baseada em outra, sem modificar a original
+     * @param arquivoOriginal Objeto de arquivo do Obsidian
+     * @param novoConteudo Conteúdo da nova nota
+     * @param sufixo Sufixo para o nome do novo arquivo
+     */
+    async criarNotaBaseada(arquivoOriginal: any, novoConteudo: string, sufixo = '_MODIFICADA') {
+        const novoNome = arquivoOriginal.name.replace('.md', `${sufixo}.md`);
+        const novoCaminho = arquivoOriginal.path.replace(arquivoOriginal.name, novoNome);
+        await this.app.vault.create(novoCaminho, novoConteudo);
+        return novoCaminho;
+    }
+
+    /**
+     * Busca por conteúdo específico em todas as conversas salvas (pasta de chats)
+     * @param termo Palavra/frase a buscar
+     */
+    async buscarEmConversas(termo: string) {
+        const arquivos = this.app.vault.getFiles().filter(f => f.path.startsWith('ChatGPT_MD/chats') && f.extension === 'md');
+        const resultados = [];
+        for (const arquivo of arquivos) {
+            const conteudo = await this.app.vault.read(arquivo);
+            if (conteudo.toLowerCase().includes(termo.toLowerCase())) {
+                resultados.push({ nome: arquivo.name, caminho: arquivo.path });
+            }
+        }
+        return resultados;
+    }
+
+    /**
+     * Busca no cache .json
+     */
+    async buscarNoCache(termo: string) {
+        const cacheFile = 'busca_cache.json';
+        try {
+            const file = this.app.vault.getFileByPath(cacheFile);
+            if (file) {
+                const content = await this.app.vault.read(file);
+                const cache = JSON.parse(content);
+                if (cache[termo]) return cache[termo];
+            }
+        } catch {}
+        return null;
+    }
+
+    /**
+     * Salva resultados de busca no cache .json, sempre acrescentando (não sobrescreve buscas antigas)
+     */
+    async salvarCacheBusca(termo: string, resultados: any[]) {
+        const cacheFile = 'busca_cache.json';
+        let cache: Record<string, any[]> = {};
+        try {
+            const file = this.app.vault.getFileByPath(cacheFile);
+            if (file) {
+                const content = await this.app.vault.read(file);
+                cache = JSON.parse(content);
+            }
+        } catch {}
+        // Se já existe, concatena resultados novos que não estão no cache
+        if (!cache[termo]) {
+            cache[termo] = resultados;
+        } else {
+            const existentes = new Set(cache[termo].map((r: any) => r.caminho + r.nome));
+            for (const r of resultados) {
+                if (!existentes.has(r.caminho + r.nome)) {
+                    cache[termo].push(r);
+                }
+            }
+        }
+        const file = this.app.vault.getFileByPath(cacheFile);
+        if (file) {
+            await this.app.vault.modify(file, JSON.stringify(cache));
+        } else {
+            await this.app.vault.create(cacheFile, JSON.stringify(cache));
+        }
+    }
+
+    /**
+     * Limpa o cache de buscas
+     */
+    async limparCacheBusca() {
+        const cacheFile = 'busca_cache.json';
+        const file = this.app.vault.getFileByPath(cacheFile);
+        if (file) {
+            await this.app.vault.modify(file, '{}');
+        }
+    }
+}
+
+function toCoreMessages(messages: any[]): CoreMessage[] {
+    return messages.filter(
+        (m) => m.role === "user" || m.role === "assistant" || m.role === "system"
+    );
 }

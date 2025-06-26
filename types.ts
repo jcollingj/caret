@@ -153,7 +153,7 @@ export interface WorkflowPrompt {
 }
 export interface CaretPluginSettings {
     caret_version: string;
-    chat_logs_folder: string;
+    chatSavePath: string;
     chat_logs_date_format_bool: boolean;
     chat_logs_rename_bool: boolean;
     chat_send_chat_shortcut: string;
