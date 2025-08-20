@@ -1,11 +1,5 @@
-> [!note]
-> Throughout this document:
-> - "Caret OP" refers to this Obsidian plugin
-> - "Caret" refers to a separate paid SaaS product (see note at bottom)
-
-
 # Caret Obsidian Plugin
-Caret OP is an Obsidian plugin that brings the power of LLMs into your Obsidian Vault. Caret OP follows all the main Obsidian philosophies. It's local-first, privacy preserving and stores all generated data as local files.
+Caret is an Obsidian plugin that brings the power of LLMs into your Obsidian Vault. Caret follows all the main Obsidian philosophies. It's local-first, privacy preserving and stores all generated data as local files.
 
 
 # Features:
@@ -29,7 +23,7 @@ The discord is for people to:
 Good vibes only. Strongly enforced.
 
 > [!note]
-> Please note that this discord is also for my paid product, Caret.
+> Please note this is a general discord for Firstloop, who maintains the Caret plugin.
 
 
 ## Docs 
@@ -49,7 +43,12 @@ PRs welcome! More guidelines to come on this. But essentially if it's good, read
 
 Big emphasis on "follows Caret OP's design principles". Please don't start working on something that violates a design principle without running it past me first. I don't want you to possibly waste time if it's a feature that I won't be able to incorporate.
 
-## Supporting Caret OP and Caret 
-Caret OP is free and open source and it always will be. You can support Caret OP by checking out https://www.caretai.app/.
+## Supporting Caret OP
+Caret OP is free and open source and it always will be. Caret is maintain by the developers at Firstloop. If you get a lot of value out of the plugin, you can consider buying a support subscription:
+[Bronze - $10/month](https://buy.stripe.com/7sY28s0oba3g8Lo0pk5os07)
+[Silver - $50/month](https://buy.stripe.com/00w7sM7QD4IW7Hkc825os06) 
+[Gold - $100/month](https://buy.stripe.com/dRm7sM2wj7V88Lo8VQ5os05)
 
-This is a standalone web app created by me! Caret OP and Caret (the web app) are fully separate products, but they are thematically similar. Really Caret grew out of this plugin. If you are enjoying the plugin, I would love it if you would checkout my web app as well.
+Supporting Caret OP is completely unnecessary but greatly appreciated. Your support helps fund continued development of the plugin - the more supporters we have, the more developer time we can dedicate to improving Caret OP.
+
+You can also support First Loop by checking out our [website](https://firstloop.ai/). We offer consulting and software development services in addition to the products we build. We'd love to chat if we could build something useful for you!
