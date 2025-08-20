@@ -51,4 +51,5 @@ Caret OP is free and open source and it always will be. Caret is maintain by the
 
 Supporting Caret OP is completely unnecessary but greatly appreciated. Your support helps fund continued development of the plugin - the more supporters we have, the more developer time we can dedicate to improving Caret OP.
 
+
 You can also support First Loop by checking out our [website](https://firstloop.ai/). We offer consulting and software development services in addition to the products we build. We'd love to chat if we could build something useful for you!
