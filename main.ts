@@ -54,7 +54,7 @@ import { createOpenAICompatible, OpenAICompatibleProvider } from "@ai-sdk/openai
 import { createXai, xai, XaiProvider } from "@ai-sdk/xai";
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.75",
+    caret_version: "0.2.76",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -2246,7 +2246,7 @@ version: 1
                                 }
 
                                 // Save the image file
-                                await this.app.vault.createBinary(filePath, base64);
+                                await this.app.vault.createBinary(filePath, base64 as unknown as ArrayBuffer);
                                 const fileObj = this.app.vault.getFileByPath(filePath);
 
                                 if (!fileObj) {
