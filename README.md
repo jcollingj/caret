@@ -45,9 +45,9 @@ Big emphasis on "follows Caret OP's design principles". Please don't start worki
 
 ## Supporting Caret OP
 Caret OP is free and open source and it always will be. Caret is maintain by the developers at Firstloop. If you get a lot of value out of the plugin, you can consider buying a support subscription:
-[Bronze - $10/month](https://buy.stripe.com/7sY28s0oba3g8Lo0pk5os07)
-[Silver - $50/month](https://buy.stripe.com/00w7sM7QD4IW7Hkc825os06) 
-[Gold - $100/month](https://buy.stripe.com/dRm7sM2wj7V88Lo8VQ5os05)
+- [Bronze - $10/month](https://buy.stripe.com/7sY28s0oba3g8Lo0pk5os07)
+- [Silver - $50/month](https://buy.stripe.com/00w7sM7QD4IW7Hkc825os06) 
+-[Gold - $100/month](https://buy.stripe.com/dRm7sM2wj7V88Lo8VQ5os05)
 
 Supporting Caret OP is completely unnecessary but greatly appreciated. Your support helps fund continued development of the plugin - the more supporters we have, the more developer time we can dedicate to improving Caret OP.
 
