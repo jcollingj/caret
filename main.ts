@@ -54,7 +54,7 @@ import { createOpenAICompatible, OpenAICompatibleProvider } from "@ai-sdk/openai
 import { createXai, xai, XaiProvider } from "@ai-sdk/xai";
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.73",
+    caret_version: "0.2.75",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -101,6 +101,13 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
                 vision: true,
                 streaming: true,
             },
+            "chatgpt-4o-latest": {
+                name: "ChatGPT-4O Latest",
+                context_window: 128000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
             "o1-preview": {
                 name: "o1-preview",
                 context_window: 128000,
@@ -128,6 +135,48 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
                 function_calling: false,
                 vision: false,
                 streaming: false,
+            },
+            o3: {
+                name: "o3",
+                context_window: 200000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "o4-mini": {
+                name: "o4-mini",
+                context_window: 200000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "gpt-5": {
+                name: "GPT-5",
+                context_window: 400000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "gpt-5-mini": {
+                name: "GPT-5 Mini",
+                context_window: 400000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "gpt-5-nano": {
+                name: "GPT-5 Nano",
+                context_window: 400000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "gpt-5-chat-latest": {
+                name: "GPT-5 Chat Latest",
+                context_window: 400000,
+                function_calling: true,
+                vision: true,
+                streaming: true,
             },
         },
         groq: {
@@ -174,15 +223,6 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
                 vision: true,
                 streaming: true,
             },
-
-            // Failed on first attempt. Need to add retry logic first.
-            // "llama3-groq-70b-8192-tool-use-preview": {
-            //     name: "llama3 Groq 70b Tool Use Preview",
-            //     context_window: 8192,
-            //     function_calling: true,
-            //     vision: true,
-            //     streaming: true,
-            // },
         },
         anthropic: {
             "claude-3-5-sonnet-20240620": {
@@ -376,6 +416,27 @@ export const DEFAULT_SETTINGS: CaretPluginSettings = {
         },
         custom: {},
         google: {
+            "gemini-2.5-pro": {
+                name: "Gemini 2.5 Pro",
+                context_window: 1048576,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "gemini-2.5-flash": {
+                name: "Gemini 2.5 Flash",
+                context_window: 1048576,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
+            "gemini-2.5-flash-lite": {
+                name: "Gemini 2.5 Flash Lite",
+                context_window: 1048576,
+                function_calling: true,
+                vision: true,
+                streaming: true,
+            },
             "gemini-2.0-flash": {
                 name: "Gemini 2.0 Flash",
                 context_window: 1048576,
