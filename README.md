@@ -43,7 +43,7 @@ PRs welcome! More guidelines to come on this. But essentially if it's good, read
 
 Big emphasis on "follows Caret OP's design principles". Please don't start working on something that violates a design principle without running it past me first. I don't want you to possibly waste time if it's a feature that I won't be able to incorporate.
 
-## Supporting Caret OP
+## Supporting Caret Obsidian Plugin
 Caret OP is free and open source and it always will be. Caret is maintain by the developers at Firstloop. If you get a lot of value out of the plugin, you can consider buying a support subscription:
 - [Bronze - $10/month](https://buy.stripe.com/7sY28s0oba3g8Lo0pk5os07)
 - [Silver - $50/month](https://buy.stripe.com/00w7sM7QD4IW7Hkc825os06) 
