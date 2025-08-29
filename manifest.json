@@ -1,7 +1,7 @@
 {
     "id": "caret",
     "name": "Caret",
-    "version": "0.2.76",
+    "version": "0.2.77",
     "minAppVersion": "1.5.12",
     "description": "Accelerate your work with LLMs in canvas and your notes",
     "author": "Jake Colling",
