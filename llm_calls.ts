@@ -95,6 +95,7 @@ export async function ai_sdk_streaming(
     
     // Validate conversation structure
     const validatedConversation = ConversationSchema.parse(conversation);
+    console.log("AI_SDK_STREAMING - Messages being sent:", JSON.stringify(validatedConversation, null, 2));
     const handleError = (event: unknown) => {
         const error = (event as { error: unknown }).error;
         const typedError = error as { errors: Array<{ statusCode: number }> };
@@ -139,6 +140,7 @@ export async function ai_sdk_completion(
     
     // Validate conversation structure
     const validatedConversation = ConversationSchema.parse(conversation);
+    console.log("AI_SDK_COMPLETION - Messages being sent:", JSON.stringify(validatedConversation, null, 2));
 
     if (provider_name === "openrouter") {
         const openrouter_provider = provider as OpenRouterProvider;
@@ -171,6 +173,7 @@ export async function ai_sdk_structured<T extends z.ZodType>(
     
     // Validate conversation structure
     const validatedConversation = ConversationSchema.parse(conversation);
+    console.log("AI_SDK_STRUCTURED - Messages being sent:", JSON.stringify(validatedConversation, null, 2));
 
     if (provider_name === "openrouter") {
         const openrouter_provider = provider as OpenRouterProvider;
