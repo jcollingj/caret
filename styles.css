@@ -368,8 +368,82 @@
     min-width: 600px;
 }
 .caret-system-prompt-modal-text-area {
-    height: 400px;
+    height: 300px;
     width: 100%;
+    padding: 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    font-family: var(--font-monospace);
+    font-size: 13px;
+    line-height: 1.5;
+    resize: vertical;
+    background: var(--background-primary);
+    color: var(--text-normal);
+}
+
+.caret-system-prompt-modal {
+    padding: 24px;
+    max-width: 600px;
+    width: 100%;
+}
+
+.caret-modal-header {
+    margin-bottom: 20px;
+}
+
+.caret-modal-title {
+    margin: 0 0 8px 0;
+    color: var(--text-normal);
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.caret-modal-subtitle {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.caret-modal-content {
+    margin-bottom: 24px;
+}
+
+.caret-modal-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.caret-modal-button {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.caret-modal-button-primary {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+}
+
+.caret-modal-button-primary:hover {
+    background: var(--interactive-accent-hover);
+    border-color: var(--interactive-accent-hover);
+}
+
+.caret-modal-button-secondary {
+    background: transparent;
+    color: var(--text-normal);
+    border-color: var(--background-modifier-border);
+}
+
+.caret-modal-button-secondary:hover {
+    background: var(--background-modifier-hover);
 }
 .caret-workflow-editor-temperature-input {
     appearance: number-input;

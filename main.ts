@@ -54,7 +54,7 @@ import { createOpenAICompatible, OpenAICompatibleProvider } from "@ai-sdk/openai
 import { createXai, xai, XaiProvider } from "@ai-sdk/xai";
 
 export const DEFAULT_SETTINGS: CaretPluginSettings = {
-    caret_version: "0.2.78",
+    caret_version: "0.2.79",
     chat_logs_folder: "caret/chats",
     chat_logs_date_format_bool: false,
     chat_logs_rename_bool: true,
@@ -2911,7 +2911,14 @@ version: 1
         xOffset: number = 200,
         yOffset: number = 0
     ) {
+        // Always use the provided system_prompt (could be empty)
         let local_system_prompt = system_prompt;
+
+        // Log the system prompt situation
+        console.log("SPARKLE - Input system_prompt:", JSON.stringify(system_prompt));
+        console.log("SPARKLE - Global system_prompt setting:", JSON.stringify(this.settings.system_prompt));
+        console.log("SPARKLE - Using local_system_prompt:", JSON.stringify(local_system_prompt));
+
         const canvas_view = this.app.workspace.getMostRecentLeaf()?.view;
         // @ts-ignore
         if (!canvas_view || !canvas_view.canvas) {
@@ -3133,7 +3140,19 @@ version: 1
             throw new Error("Invalid context window: must be a number");
         }
 
+        console.log("SPARKLE - Before buildConversation, local_system_prompt:", JSON.stringify(local_system_prompt));
         const { conversation } = await this.buildConversation(node, nodes, edges, local_system_prompt, context_window);
+        console.log("SPARKLE - After buildConversation, conversation:", JSON.stringify(conversation, null, 2));
+
+        // Always add global system prompt as additional message if it exists
+        if (this.settings.system_prompt && this.settings.system_prompt.trim().length > 0) {
+            console.log("SPARKLE - Adding global system prompt as additional message");
+            conversation.unshift({ role: "system", content: this.settings.system_prompt.trim() });
+        } else {
+            console.log("SPARKLE - No global system prompt to add");
+        }
+
+        console.log("SPARKLE - Final conversation being sent to LLM:", JSON.stringify(conversation, null, 2));
 
         const { model, provider, temperature } = this.mergeSettingsAndSparkleConfig(sparkle_config);
 
@@ -3302,6 +3321,14 @@ version: 1
             context_window: "default",
         }
     ) {
+        // Always use the provided system_prompt (could be empty)
+        let local_system_prompt = system_prompt;
+
+        // Log the system prompt situation for refresh
+        console.log("REFRESH - Input system_prompt:", JSON.stringify(system_prompt));
+        console.log("REFRESH - Global system_prompt setting:", JSON.stringify(this.settings.system_prompt));
+        console.log("REFRESH - Using local_system_prompt:", JSON.stringify(local_system_prompt));
+
         const caret_canvas = CaretCanvas.fromPlugin(this);
         const refreshed_node = caret_canvas.getNode(refreshed_node_id);
 
@@ -3315,13 +3342,25 @@ version: 1
             throw new Error("Invalid context window: must be a number");
         }
 
+        console.log("REFRESH - Before buildConversation, local_system_prompt:", JSON.stringify(local_system_prompt));
         const { conversation } = await this.buildConversation(
             parent_node,
             caret_canvas.nodes,
             caret_canvas.edges,
-            system_prompt,
+            local_system_prompt,
             context_window
         );
+        console.log("REFRESH - After buildConversation, conversation:", JSON.stringify(conversation, null, 2));
+
+        // Always add global system prompt as additional message if it exists
+        if (this.settings.system_prompt && this.settings.system_prompt.trim().length > 0) {
+            console.log("REFRESH - Adding global system prompt as additional message");
+            conversation.unshift({ role: "system", content: this.settings.system_prompt.trim() });
+        } else {
+            console.log("REFRESH - No global system prompt to add");
+        }
+
+        console.log("REFRESH - Final conversation being sent to LLM:", JSON.stringify(conversation, null, 2));
         const { provider, model, temperature } = this.mergeSettingsAndSparkleConfig(sparkle_config);
         if (!isEligibleProvider(provider)) {
             throw new Error(`Invalid provider: ${provider}`);
