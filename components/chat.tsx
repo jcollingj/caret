@@ -216,7 +216,6 @@ const ChatComponent = forwardRef<
         let sdk_provider: sdk_provider = get_provider(plugin, provider);
 
         if (plugin.settings.llm_provider_options[plugin.settings.llm_provider][plugin.settings.model].streaming) {
-            console.log({ model, temperature, provider });
             const stream = await ai_sdk_streaming(sdk_provider, model, valid_conversation, temperature, provider);
 
             setConversation((prev) => [...prev, { content: "", role: "assistant" }]);

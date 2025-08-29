@@ -1949,7 +1949,6 @@ version: 1
 
                             output += "=== END NODE INSPECTION ===";
 
-                            console.log(output);
                         },
                     },
                     {
@@ -2185,7 +2184,6 @@ version: 1
 
                             output += "=== END CANVAS INSPECTION ===";
 
-                            console.log(output);
                         },
                     },
                     {
@@ -2202,7 +2200,6 @@ version: 1
                                 }
 
                                 new Notice("Generating image...");
-                                console.log("Generating image with prompt:", prompt);
 
                                 // Generate the image using selected provider and model
                                 const imageProvider = this.getImageProvider();
@@ -2261,7 +2258,6 @@ version: 1
 
                                 // Method 1: Try using canvas.createFileNode with proper file object
                                 if (!success && typeof canvas.createFileNode === "function") {
-                                    console.log("Method 1: Using canvas.createFileNode with file object");
                                     const fileNodeConfig = {
                                         pos: { x: node.x + node.width + 50, y: node.y },
                                         size: { width: 400, height: 300 },
@@ -2269,7 +2265,6 @@ version: 1
                                     };
                                     try {
                                         const newFileNode = canvas.createFileNode(fileNodeConfig);
-                                        console.log("Created file node:", newFileNode);
                                         success = true;
                                     } catch (e) {
                                         console.error("createFileNode failed:", e);
@@ -2278,7 +2273,6 @@ version: 1
 
                                 // Method 2: Try using addNodeToCanvas with file object (fallback)
                                 if (!success) {
-                                    console.log("Method 2: Using addNodeToCanvas with file object");
                                     try {
                                         const fileNodeData = await this.addNodeToCanvas(
                                             canvas,
@@ -2297,7 +2291,6 @@ version: 1
                                         const canvasNode = canvas.nodes?.get(fileNodeData?.id!);
                                         if (canvasNode) {
                                             canvasNode.file = fileObj;
-                                            console.log("Set file object on canvas node");
                                         }
                                         success = true;
                                     } catch (e) {
@@ -2307,7 +2300,6 @@ version: 1
 
                                 // Method 3: Try direct canvas.importData with file object (last resort)
                                 if (!success) {
-                                    console.log("Method 3: Using canvas.importData with file object");
                                     try {
                                         const canvas_data = canvas.getData();
                                         const fileNodeDirect = {
@@ -2329,7 +2321,6 @@ version: 1
                                         const canvasNode = canvas.nodes?.get(fileNodeDirect.id);
                                         if (canvasNode) {
                                             canvasNode.file = fileObj;
-                                            console.log("Set file object on imported node");
                                         }
 
                                         success = true;
@@ -2786,7 +2777,7 @@ version: 1
 
     async getRefBlocksContent(node_text: any): Promise<string> {
         const bracket_regex = /\[\[(.*?)\]\]/g;
-        let rep_block_content = "";
+        let rep_block_content = node_text;
 
         let match;
         const matches = [];
@@ -3266,9 +3257,7 @@ version: 1
                 local_system_prompt = node.text;
             }
         }
-
         local_system_prompt = await this.getRefBlocksContent(local_system_prompt);
-
         conversation.reverse();
         if (local_system_prompt.length > 0) {
             conversation.unshift({ role: "system", content: local_system_prompt });
