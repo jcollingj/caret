@@ -13,6 +13,14 @@ import { z } from "zod";
 import CaretPlugin from "main";
 import { XaiProvider } from "@ai-sdk/xai";
 
+// Zod validation for message structure
+const MessageSchema = z.object({
+    role: z.enum(["system", "user", "assistant"]),
+    content: z.string()
+});
+
+const ConversationSchema = z.array(MessageSchema);
+
 export type sdk_provider =
     | GoogleGenerativeAIProvider
     | OpenAIProvider
@@ -84,7 +92,9 @@ export async function ai_sdk_streaming(
     provider_name: eligible_provider
 ): Promise<StreamTextResult<Record<string, CoreTool<any, any>>, never>> {
     new Notice(`Calling ${provider_name[0].toUpperCase() + provider_name.slice(1)}`);
-    const formattedPrompt = conversation.map((msg) => `${msg.role}: ${msg.content}`).join("\n");
+    
+    // Validate conversation structure
+    const validatedConversation = ConversationSchema.parse(conversation);
     const handleError = (event: unknown) => {
         const error = (event as { error: unknown }).error;
         const typedError = error as { errors: Array<{ statusCode: number }> };
@@ -102,7 +112,7 @@ export async function ai_sdk_streaming(
         const openrouter_provider = provider as OpenRouterProvider;
         return await streamText({
             model: openrouter_provider.chat(model),
-            prompt: formattedPrompt,
+            messages: validatedConversation,
             temperature,
             onError: handleError,
         });
@@ -111,7 +121,7 @@ export async function ai_sdk_streaming(
     const final_provider = provider as Exclude<sdk_provider, OpenRouterProvider>;
     const stream = await streamText({
         model: final_provider(model),
-        prompt: formattedPrompt,
+        messages: validatedConversation,
         temperature,
         onError: handleError,
     });
@@ -126,13 +136,15 @@ export async function ai_sdk_completion(
     provider_name: eligible_provider
 ): Promise<string> {
     new Notice(`Calling ${provider_name[0].toUpperCase() + provider_name.slice(1)}`);
-    const formattedPrompt = conversation.map((msg) => `${msg.role}: ${msg.content}`).join("\n");
+    
+    // Validate conversation structure
+    const validatedConversation = ConversationSchema.parse(conversation);
 
     if (provider_name === "openrouter") {
         const openrouter_provider = provider as OpenRouterProvider;
         const response = await generateText({
             model: openrouter_provider.chat(model),
-            prompt: formattedPrompt,
+            messages: validatedConversation,
             temperature,
         });
         return response.text;
@@ -141,7 +153,7 @@ export async function ai_sdk_completion(
     const final_provider = provider as Exclude<sdk_provider, OpenRouterProvider>;
     const response = await generateText({
         model: final_provider(model),
-        prompt: formattedPrompt,
+        messages: validatedConversation,
         temperature,
     });
 
@@ -156,14 +168,16 @@ export async function ai_sdk_structured<T extends z.ZodType>(
     schema: T
 ): Promise<z.infer<T>> {
     new Notice(`Calling ${provider_name[0].toUpperCase() + provider_name.slice(1)}`);
-    const formattedPrompt = conversation.map((msg) => `${msg.role}: ${msg.content}`).join("\n");
+    
+    // Validate conversation structure
+    const validatedConversation = ConversationSchema.parse(conversation);
 
     if (provider_name === "openrouter") {
         const openrouter_provider = provider as OpenRouterProvider;
         const response = await generateObject({
             model: openrouter_provider.chat(model),
             schema,
-            prompt: formattedPrompt,
+            messages: validatedConversation,
             temperature,
             mode: "json",
         });
@@ -175,7 +189,7 @@ export async function ai_sdk_structured<T extends z.ZodType>(
     const response = await generateObject({
         model: final_provider(model),
         schema,
-        prompt: formattedPrompt,
+        messages: validatedConversation,
         temperature,
     });
 
@@ -185,8 +199,6 @@ export async function ai_sdk_structured<T extends z.ZodType>(
 export async function ai_sdk_image_gen(params: { provider: image_provider; prompt: string; model: string }) {
     // Implementation to be added
     const model = params.model;
-    console.log("Generating image...");
-    console.log({ model });
     const { image } = await generateImage({
         model: params.provider.image(model),
         prompt: params.prompt,
