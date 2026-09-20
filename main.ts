@@ -634,6 +634,7 @@ export default class CaretPlugin extends Plugin {
             this.perplexity_client = createOpenAICompatible({
                 apiKey: this.settings.perplexity_api_key,
                 baseURL: "https://api.perplexity.ai/",
+                headers: { "X-Pplx-Integration": "caret" },
                 name: "perplexity",
             });
         }
